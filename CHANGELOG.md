@@ -25,6 +25,8 @@ not contain everything listed below.
 - **A question before closing** while connections are live — “Close and disconnect?”, with the
   number of connections, a “Don't ask again” option, and the same switch in Settings.
 - **The language switch (EN/PL) moved to the title bar**, so it no longer takes a whole row.
+- **A third-party license list** — every component the app is built on, with its version and
+  license, is listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 **Fixed**
 

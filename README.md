@@ -195,6 +195,9 @@ folder and the app never reads, copies or exports them.
 MCC GUI V2 is released under the **MIT License** — see [LICENSE](LICENSE).
 Copyright (c) 2026 AnonBOTpl.
 
+The third-party components the app uses, each with its license, are listed in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 The project is **not affiliated with, endorsed by or sponsored by** Mojang Studios, Microsoft,
 or the Minecraft Console Client team. “Minecraft” and “Mojang” are trademarks of Mojang
 Studios. The app never speaks the Minecraft protocol itself — it goes through MCC.
