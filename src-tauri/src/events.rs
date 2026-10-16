@@ -61,6 +61,17 @@ pub struct JoinedPayload {
     pub account_id: String,
 }
 
+/// Payload zdarzenia `app://close-requested`.
+///
+/// Wysyłamy je, gdy użytkownik chce zamknąć okno, a w tle działają połączenia:
+/// zamykanie jest wstrzymane (`prevent_close`) i interfejs pyta, czy rozłączyć.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseRequestedPayload {
+    /// Ile połączeń zostanie rozłączonych, jeśli użytkownik potwierdzi.
+    pub active: usize,
+}
+
 /// Odbiorca zdarzeń. Implementacja w aplikacji wysyła je przez Tauri, a w
 /// testach zbiera do wektora.
 pub trait EventSink: Send + Sync + 'static {

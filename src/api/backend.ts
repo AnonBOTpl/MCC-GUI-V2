@@ -7,6 +7,7 @@ import {
   EVENTS,
   type Account,
   type AppSettings,
+  type CloseRequestedPayload,
   type DeviceCodePayload,
   type DiagReport,
   type ErrorPayload,
@@ -77,6 +78,11 @@ export const backend = {
   openLoginUrl: (url: string) => call<void>('open_login_url', { url }),
   /** Kopiuje kod logowania do schowka (przez Rusta, bez okna uprawnień WebView2). */
   copyLoginCode: (code: string) => call<void>('copy_login_code', { code }),
+  /**
+   * Kopiuje zaznaczone wiersze logu do schowka (Paczka 3). Tekst waliduje Rust
+   * (`src-tauri/src/clipboard.rs`): długość, znaki sterujące i końce linii.
+   */
+  copyText: (text: string) => call<void>('copy_text', { text }),
   /** Presety szybkich akcji z `presets.json` (start jest łagodny: brak pliku = pusta lista). */
   listPresets: () => call<Preset[]>('list_presets'),
   /**
@@ -99,6 +105,11 @@ export const backend = {
    * `saveSettings` oddaje wersję znormalizowaną.
    */
   saveOpenTabs: (tabs: OpenTab[]) => call<OpenTab[]>('save_open_tabs', { tabs }),
+  /**
+   * Zamyka aplikację po potwierdzeniu przez użytkownika. Rust najpierw łagodnie
+   * zatrzymuje połączenia (`/quit`), a dopiero potem zamyka okno.
+   */
+  closeApp: () => call<void>('close_app'),
   /** Bieżące ustawienia aplikacji (Rust wysyła je znormalizowane). */
   getSettings: () => call<AppSettings>('get_settings'),
   /** Zapisuje ustawienia; Rust waliduje je i zwraca wersję znormalizowaną. */
@@ -108,6 +119,16 @@ export const backend = {
    * Zwraca wybraną, zwalidowaną ścieżkę albo `null`, gdy użytkownik anulował.
    */
   pickMccExecutable: () => call<string | null>('pick_mcc_executable'),
+  /** Efektywny folder logów czatu (własny użytkownika albo domyślny). */
+  chatLogDir: () => call<string>('chat_log_dir'),
+  /**
+   * Otwiera natywne okno wyboru folderu logów czatu. Ścieżkę bierze z Rusta
+   * (walidacja: pełna ścieżka, folder do utworzenia, zapisywalny).
+   * `null` oznacza anulowanie.
+   */
+  pickChatLogFolder: () => call<string | null>('pick_chat_log_folder'),
+  /** Otwiera folder logów czatu w Eksploratorze (ścieżka pochodzi z ustawień). */
+  openChatLogFolder: () => call<void>('open_chat_log_folder'),
   /** Czy diagnostyka zamrożenia widoku logu jest włączona (`MCC_GUI_DIAG=1`). */
   diagEnabled: () => call<boolean>('diag_enabled'),
   /**
@@ -128,4 +149,10 @@ export const events = {
     listen<DeviceCodePayload>(EVENTS.deviceCode, (event) => handler(event.payload)),
   onJoined: (handler: (payload: JoinedPayload) => void): Promise<UnlistenFn> =>
     listen<JoinedPayload>(EVENTS.joined, (event) => handler(event.payload)),
+  /**
+   * Użytkownik zamknął okno, a działają połączenia: Rust wstrzymał zamknięcie
+   * i czeka, aż UI zapyta. Odpowiedzią jest `backend.closeApp`.
+   */
+  onCloseRequested: (handler: (payload: CloseRequestedPayload) => void): Promise<UnlistenFn> =>
+    listen<CloseRequestedPayload>(EVENTS.closeRequested, (event) => handler(event.payload)),
 }

@@ -27,6 +27,11 @@ const URL_MARKER: &str = "To sign in, open ";
 /// Fragment szablonu między adresem a kodem.
 const CODE_MARKER: &str = " in your browser and enter the code: ";
 
+/// Skrócone markery promptu (bez otaczających spacji) - używane przy filtrowaniu
+/// logów czatu, gdzie linia może być urwana albo mieć inny przedrostek.
+const URL_HINT: &str = "To sign in, open";
+const CODE_HINT: &str = "in your browser and enter the code";
+
 /// Fragment komunikatu o udanym połączeniu (`mcc.joined`).
 const JOINED_MARKER: &str = "Server was successfully joined.";
 
@@ -134,6 +139,19 @@ pub fn detect_device_code(raw: &str) -> Option<DeviceCodePrompt> {
     })
 }
 
+/// Czy linia zawiera prompt logowania Microsoft (kod urządzenia albo link).
+///
+/// Używane przez zapis logów czatu: te wiersze **nigdy** nie mogą trafić do
+/// pliku. Najpierw sprawdzamy pełny wzorzec, a potem same markery - gdyby MCC
+/// zmienił otoczenie kodu albo adresu, wiersz nadal nie trafi na dysk.
+pub fn is_login_prompt(raw: &str) -> bool {
+    if detect_device_code(raw).is_some() {
+        return true;
+    }
+    let plain = strip_formatting(raw);
+    plain.contains(URL_HINT) || plain.contains(CODE_HINT)
+}
+
 /// Czy linia mówi, że klient połączył się z serwerem.
 pub fn is_joined(raw: &str) -> bool {
     raw.contains(JOINED_MARKER) || strip_formatting(raw).contains(JOINED_MARKER)
@@ -200,6 +218,25 @@ mod tests {
         let line =
             "To sign in, open https://x.example.com in your browser and enter the code: AB CD";
         assert!(detect_device_code(line).is_none());
+    }
+
+    #[test]
+    fn login_prompt_is_recognised_for_log_filtering() {
+        // Pełny prompt z realnej próbki (`docs/MCC_NOTES.md`).
+        assert!(is_login_prompt(
+            "To sign in, open https://www.microsoft.com/link in your browser and enter the code: §e7FRBLM2Y"
+        ));
+        // Sama linia z adresem albo sam kod też nie mają prawa przejść.
+        assert!(is_login_prompt(
+            "§8[MCC] To sign in, open https://microsoft.com/devicelogin in your browser and enter the code: "
+        ));
+        assert!(is_login_prompt(
+            "in your browser and enter the code: 7FRBLM2Y"
+        ));
+        // Zwykły ruch z serwera przechodzi do pliku.
+        assert!(!is_login_prompt("§8[MCC] Server was successfully joined."));
+        assert!(!is_login_prompt("<Steve> hello"));
+        assert!(!is_login_prompt("§8You chose to run in offline mode."));
     }
 
     #[test]

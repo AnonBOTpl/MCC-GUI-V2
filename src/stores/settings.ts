@@ -22,6 +22,10 @@ const FALLBACK_SETTINGS: AppSettings = {
   sendAllDelayMs: 250,
   logBufferSize: 5000,
   restoreTabs: true,
+  confirmClose: true,
+  chatLogEnabled: true,
+  chatLogDir: null,
+  chatLogRetentionDays: 30,
   serverHistory: [],
 }
 
@@ -42,6 +46,11 @@ export const useSettingsStore = defineStore('settings', () => {
   const appSettings = ref<AppSettings>({ ...FALLBACK_SETTINGS })
   /** Czy udało się wczytać ustawienia z Rusta (potrzebne do pierwszego uruchomienia). */
   const loaded = ref(false)
+  /**
+   * Efektywny folder logów czatu wg Rusta (domyślny, gdy nie wybrano własnego).
+   * Trzymamy go osobno, bo przy `chatLogDir = null` UI i tak ma pokazać ścieżkę.
+   */
+  const chatLogDir = ref<string | null>(null)
 
   function setLocale(next: Locale): void {
     locale.value = next
@@ -67,6 +76,7 @@ export const useSettingsStore = defineStore('settings', () => {
       appSettings.value = await backend.getSettings()
       loaded.value = true
       applyLogBufferSize(appSettings.value)
+      await loadChatLogDir()
 
       // Język z ustawień jest autorytatywny, jeśli lokalnie nic nie zapisano.
       if (typeof localStorage === 'undefined' || localStorage.getItem(STORAGE_KEY) === null) {
@@ -84,6 +94,8 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       appSettings.value = await backend.saveSettings({ ...appSettings.value, ...patch })
       applyLogBufferSize(appSettings.value)
+      // Folder logów mógł się zmienić - pokazujemy efektywną ścieżkę z Rusta.
+      await loadChatLogDir()
       return true
     } catch (error) {
       pushError(error as ErrorPayload)
@@ -103,6 +115,21 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
+   * Zamyka aplikację po potwierdzeniu przez użytkownika (`close_app`); Rust
+   * najpierw łagodnie zatrzymuje połączenia. `false` oznacza, że zamknięcie się
+   * nie udało - okno zostaje otwarte, a błąd ląduje w toastach.
+   */
+  async function closeApp(): Promise<boolean> {
+    try {
+      await backend.closeApp()
+      return true
+    } catch (error) {
+      pushError(error as ErrorPayload)
+      return false
+    }
+  }
+
+  /**
    * Otwiera natywny wybór pliku i zwraca zwalidowaną ścieżkę do MCC.
    * Nic nie zapisuje - zapis należy do modala ustawień.
    * `null` oznacza anulowanie albo błąd (błąd ląduje w toastach).
@@ -116,14 +143,50 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  /** Odświeża efektywny folder logów czatu (po starcie i po każdej zmianie ustawień). */
+  async function loadChatLogDir(): Promise<void> {
+    try {
+      chatLogDir.value = await backend.chatLogDir()
+    } catch (error) {
+      pushError(error as ErrorPayload)
+    }
+  }
+
+  /**
+   * Otwiera natywny wybór folderu logów czatu. Nic nie zapisuje - zapis należy
+   * do modala ustawień. `null` oznacza anulowanie albo błąd (błąd ląduje w toastach).
+   */
+  async function pickChatLogFolder(): Promise<string | null> {
+    try {
+      return await backend.pickChatLogFolder()
+    } catch (error) {
+      pushError(error as ErrorPayload)
+      return null
+    }
+  }
+
+  /** Otwiera folder logów czatu w Eksploratorze. */
+  async function openChatLogFolder(): Promise<void> {
+    try {
+      await backend.openChatLogFolder()
+    } catch (error) {
+      pushError(error as ErrorPayload)
+    }
+  }
+
   return {
     locale,
     appSettings,
     loaded,
+    chatLogDir,
     setLocale,
     load,
     save,
+    closeApp,
     rememberServer,
     pickMccExecutable,
+    loadChatLogDir,
+    pickChatLogFolder,
+    openChatLogFolder,
   }
 })

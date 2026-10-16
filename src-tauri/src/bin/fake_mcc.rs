@@ -48,6 +48,12 @@ fn main() {
     }
     eprintln!("§8[fake] stderr ready");
 
+    // Atrapa ignorująca `/quit` - symuluje MCC, które zjada tę linię jako odpowiedź
+    // na swoje pytanie w konsoli i **nie kończy pracy** (patrz `docs/MCC_NOTES.md`
+    // §3.2). Potrzebne do testu wymuszonego zatrzymania. Wyzwalaczem jest plik, a nie
+    // zmienna środowiskowa - zmienne są wspólne dla całego procesu testowego.
+    let ignore_quit = std::path::Path::new("fake-ignore-quit").exists();
+
     // Symulacja logowania Microsoft. Wyzwalaczem jest plik w katalogu roboczym
     // konta, a nie zmienna środowiskowa - zmienne są wspólne dla całego procesu
     // testowego i wyciekałyby między równoległymi testami.
@@ -93,6 +99,11 @@ fn main() {
             Err(_) => break,
         };
         match line.as_str() {
+            "/quit" if ignore_quit => {
+                let mut out = stdout.lock();
+                let _ = writeln!(out, "§8[fake] ignoruję /quit");
+                let _ = out.flush();
+            }
             "/quit" => {
                 stopped.store(true, Ordering::Relaxed);
                 let mut out = stdout.lock();

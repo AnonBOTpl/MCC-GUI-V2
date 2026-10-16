@@ -26,6 +26,15 @@ pub fn connection_id(account_id: &str, server: &str) -> String {
     format!("{account_id}::{server}")
 }
 
+/// Rozbija identyfikator połączenia na `(konto, serwer)`.
+///
+/// Dzielimy tylko na **pierwszym** `::`: adres serwera zawiera dwukropki
+/// (`host:25565`), więc podział „na ostatnim” byłby błędny. Używane m.in. przez
+/// logi czatu, które z identyfikatora robią nazwy katalogów.
+pub fn split_connection_id(id: &str) -> Option<(&str, &str)> {
+    id.split_once("::")
+}
+
 impl Connection {
     pub fn new(account_id: &str, server: &str) -> Self {
         Self {
@@ -85,6 +94,16 @@ mod tests {
         assert_eq!(connection_id("a", "host:1"), "a::host:1");
         assert_ne!(connection_id("a", "host:1"), connection_id("b", "host:1"));
         assert_ne!(connection_id("a", "host:1"), connection_id("a", "host:2"));
+    }
+
+    #[test]
+    fn split_connection_id_keeps_server_ports() {
+        assert_eq!(
+            split_connection_id("acc-1::play.example.com:25565"),
+            Some(("acc-1", "play.example.com:25565"))
+        );
+        assert_eq!(split_connection_id("acc-1::host"), Some(("acc-1", "host")));
+        assert_eq!(split_connection_id("acc-1"), None);
     }
 
     #[test]

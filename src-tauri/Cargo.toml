@@ -27,6 +27,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tauri-plugin-clipboard-manager = "2.4"
 tauri-plugin-dialog = "2.8"
+tauri-plugin-single-instance = "2.5.4"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }
@@ -37,6 +38,9 @@ windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_JobObjects",
+    # Czas lokalny dla logów czatu (`GetLocalTime`) - bez osobnej zależności
+    # od `chrono`/`time`; system docelowy to Windows 11.
+    "Win32_System_SystemInformation",
     "Win32_System_Threading",
 ] }
 

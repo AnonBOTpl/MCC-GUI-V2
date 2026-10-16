@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Languages } from '@lucide/vue'
 import TitleBar from './components/TitleBar.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import AddAccountModal from './components/AddAccountModal.vue'
@@ -13,10 +12,11 @@ import LogView from './components/LogView.vue'
 import QuickActions from './components/QuickActions.vue'
 import InputBar from './components/InputBar.vue'
 import ErrorToasts from './components/ErrorToasts.vue'
+import CloseConfirmModal from './components/CloseConfirmModal.vue'
+import { events } from './api/backend'
 import { useSettingsStore } from './stores/settings'
 import { useAccountsStore } from './stores/accounts'
 import { usePresetsStore } from './stores/presets'
-import { SUPPORTED_LOCALES, type Locale } from './i18n'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -25,7 +25,25 @@ const presets = usePresetsStore()
 
 // Zdarzenia z Rusta podłączamy raz na cały czas życia aplikacji.
 const unsubscribe = accounts.subscribe()
-onUnmounted(unsubscribe)
+
+/**
+ * Pytanie o zamknięcie okna. Rust wstrzymuje zamknięcie tylko wtedy, gdy
+ * naprawdę działają połączenia, więc modal pokazujemy dokładnie na to zdarzenie.
+ */
+const closePrompt = ref(false)
+const closePromptActive = ref(0)
+const unlistenClose: Array<() => void> = []
+void events
+  .onCloseRequested((payload) => {
+    closePromptActive.value = payload.active
+    closePrompt.value = true
+  })
+  .then((unlisten) => unlistenClose.push(unlisten))
+
+onUnmounted(() => {
+  unsubscribe()
+  for (const unlisten of unlistenClose) unlisten()
+})
 
 /**
  * Autoprzewijanie logu **per zakładka**: stan trzyma store kont (klucz =
@@ -70,30 +88,6 @@ onMounted(async () => {
 <template>
   <div class="flex h-full flex-col">
     <TitleBar @open-settings="settingsOpen = true" />
-
-    <div class="flex shrink-0 items-center justify-end gap-2 border-b border-slate-800 bg-slate-900/60 px-3 py-1.5">
-      <Languages
-        :size="14"
-        class="text-slate-400"
-      />
-      <span class="text-xs text-slate-400">{{ t('language.label') }}</span>
-      <div class="flex overflow-hidden rounded border border-slate-700">
-        <button
-          v-for="loc in SUPPORTED_LOCALES"
-          :key="loc"
-          type="button"
-          class="px-2.5 py-1 text-xs transition-colors"
-          :class="
-            settings.locale === loc
-              ? 'bg-blue-600 text-white'
-              : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
-          "
-          @click="settings.setLocale(loc as Locale)"
-        >
-          {{ loc.toUpperCase() }}
-        </button>
-      </div>
-    </div>
 
     <div class="flex min-h-0 flex-1">
       <AccountSidebar @add-account="addAccountOpen = true" />
@@ -140,6 +134,11 @@ onMounted(async () => {
     <AddAccountModal
       :open="addAccountOpen"
       @close="addAccountOpen = false"
+    />
+    <CloseConfirmModal
+      :open="closePrompt"
+      :active="closePromptActive"
+      @close="closePrompt = false"
     />
   </div>
 </template>

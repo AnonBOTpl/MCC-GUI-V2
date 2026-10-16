@@ -140,6 +140,24 @@ export const useAccountsStore = defineStore('accounts', () => {
     }
   }
 
+  /**
+   * Kopiuje zaznaczone wiersze logu do schowka systemowego.
+   *
+   * Ta sama droga co kod logowania (plugin schowka po stronie Rusta) - patrz
+   * `backend.copyText`. Pustego tekstu nie wysyłamy, żeby nie wołać Rusta bez
+   * powodu; błąd ląduje w zwykłym powiadomieniu.
+   */
+  async function copyText(text: string): Promise<boolean> {
+    if (text === '') return false
+    try {
+      await backend.copyText(text)
+      return true
+    } catch (error) {
+      pushError(error as ErrorPayload)
+      return false
+    }
+  }
+
   /** Otwiera adres logowania w przeglądarce (walidacja adresu jest w Rustcie). */
   async function openLoginUrl(url: string): Promise<void> {
     try {
@@ -557,6 +575,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     isOpen,
     loginPromptFor,
     copyLoginCode,
+    copyText,
     openLoginUrl,
     setActiveConnection,
     restoreAccounts,

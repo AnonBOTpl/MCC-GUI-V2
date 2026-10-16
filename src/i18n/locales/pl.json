@@ -9,7 +9,6 @@
     "close": "Zamknij"
   },
   "language": {
-    "label": "Język",
     "en": "Angielski",
     "pl": "Polski"
   },
@@ -23,14 +22,34 @@
     "browse": "Wybierz",
     "restoreTabs": "Przywracaj zakładki przy starcie",
     "restoreTabsHint": "Otwiera zakładki z poprzedniej sesji, każda zatrzymana - nic nie łączy się samo. Gdy wyłączone, aplikacja startuje bez zakładek. Konta wracają do panelu zawsze - ten przełącznik ich nie ukrywa.",
+    "confirmClose": "Pytaj przed zamknięciem przy działających połączeniach",
+    "confirmCloseHint": "Pokazuje pytanie, gdy zamknięcie okna rozłączyłoby działające połączenia. W samym pytaniu jest też checkbox „Nie pytaj więcej”.",
     "sendDelay": "Odstęp między kontami",
     "sendDelayHint": "Pauza między kontami przy wysyłce do wszystkich, żeby nie wywołać anty-spamu serwera.",
     "sendDelayUnit": "ms",
     "logBuffer": "Liczba linii logu na konto",
     "logBufferHint": "Jak daleko wstecz można przewinąć log w zakładce. Więcej linii zużywa więcej pamięci.",
     "logBufferUnit": "linii",
+    "chatLogToggle": "Zapisuj logi czatu do plików",
+    "chatLogHint": "Wszystko, co widzi i pisze każde konto, dopisuje się do pliku dnia - razem z prywatnymi wiadomościami od innych graczy. Zostają one tylko na tym komputerze. Kody logowania i linki nie są nigdzie zapisywane.",
+    "chatLogDir": "Folder logów",
+    "chatLogDefault": "Domyślna lokalizacja",
+    "chatLogChange": "Zmień",
+    "chatLogOpen": "Otwórz folder",
+    "chatLogDirHint": "W tym folderze pliki leżą w układzie serwer/konto/RRRR-MM-DD.log.",
+    "chatLogUseDefault": "Użyj folderu domyślnego",
+    "chatLogRetention": "Przechowuj logi czatu przez",
+    "chatLogRetentionHint": "Starsze pliki dzienne są usuwane przy starcie i raz na dobę. Wpisz 0, żeby nic nie kasować.",
+    "chatLogRetentionUnit": "dni",
     "save": "Zapisz",
     "cancel": "Anuluj"
+  },
+  "closeConfirm": {
+    "title": "Zamknąć i rozłączyć?",
+    "message": "Zamknięcie aplikacji rozłączy {count} połączenie. | Zamknięcie aplikacji rozłączy {count} połączenia. | Zamknięcie aplikacji rozłączy {count} połączeń.",
+    "dontAsk": "Nie pytaj więcej",
+    "confirm": "Zamknij i rozłącz",
+    "cancel": "Zostaw uruchomione"
   },
   "accountType": {
     "microsoft": "Microsoft",
@@ -88,7 +107,11 @@
   },
   "log": {
     "empty": "Brak wyjścia.",
-    "follow": "Śledzenie"
+    "follow": "Śledzenie",
+    "menu": {
+      "copy": "Kopiuj",
+      "copyAll": "Kopiuj wszystko"
+    }
   },
   "loginBanner": {
     "title": "Zaloguj się do Microsoft",
@@ -170,7 +193,8 @@
     "settings": {
       "languageInvalid": "Ten język nie jest obsługiwany.",
       "delayOutOfRange": "Odstęp musi być z zakresu 0–{max} ms.",
-      "bufferOutOfRange": "Bufor logu musi mieć od {min} do {max} linii."
+      "bufferOutOfRange": "Bufor logu musi mieć od {min} do {max} linii.",
+      "retentionOutOfRange": "Logi czatu można przechowywać od 0 do {max} dni."
     },
     "store": {
       "writeFailed": "Nie udało się zapisać pliku ustawień."
@@ -228,10 +252,19 @@
       "openFailed": "Nie udało się otworzyć linku w przeglądarce."
     },
     "clipboard": {
-      "writeFailed": "Nie udało się skopiować kodu do schowka."
+      "writeFailed": "Nie udało się skopiować do schowka.",
+      "tooLong": "Zaznaczenie jest za duże do skopiowania (limit {limit} znaków)."
+    },
+    "chatlog": {
+      "dirEmpty": "Wskaż folder na logi czatu.",
+      "dirNotAbsolute": "Folder logów musi być pełną ścieżką.",
+      "dirNotWritable": "Tego folderu logów nie da się utworzyć albo do niego zapisać.",
+      "openFailed": "Nie udało się otworzyć folderu logów.",
+      "writeFailed": "Nie udało się zapisać logu czatu konta {accountId} na serwerze {server}. Zapis dla tego połączenia jest wyłączony."
     },
     "app": {
-      "unexpectedError": "Coś poszło nie tak."
+      "unexpectedError": "Coś poszło nie tak.",
+      "closeFailed": "Nie udało się zamknąć aplikacji."
     }
   }
 }

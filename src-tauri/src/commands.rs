@@ -7,12 +7,14 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 
 use crate::account::{Account, AccountStatus};
+use crate::chatlog::ChatLog;
 use crate::error::AppError;
 use crate::events::{
     DeviceCodePayload, ErrorPayload, EventSink, JoinedPayload, LogPayload, LogStream, StatusPayload,
@@ -24,18 +26,27 @@ use crate::settings::AppSettings;
 use crate::store::Store;
 
 /// Implementacja `EventSink`, która wysyła zdarzenia przez Tauri.
+///
+/// Przy okazji karmi serwis logów czatu ([`ChatLog`]): każda linia wyjścia MCC
+/// idzie też do pliku, a statusy `starting` / `stopped` / `crashed` otwierają
+/// i zamykają sesję zapisu. Dzięki temu `process_manager` nie musi wiedzieć
+/// nic o plikach.
 pub struct TauriSink {
     app: AppHandle,
+    chat_log: Arc<ChatLog>,
 }
 
 impl TauriSink {
-    pub fn new(app: AppHandle) -> Self {
-        Self { app }
+    pub fn new(app: AppHandle, chat_log: Arc<ChatLog>) -> Self {
+        Self { app, chat_log }
     }
 }
 
 impl EventSink for TauriSink {
     fn emit_log(&self, account_id: &str, stream: LogStream, line: String, ts: i64) {
+        // Zapis do pliku jest nieblokujący (kolejka + osobne zadanie), więc
+        // czytanie wyjścia MCC nigdy nie czeka na dysk.
+        self.chat_log.write_line(account_id, stream, &line);
         let _ = self.app.emit(
             "mcc://log",
             LogPayload {
@@ -48,6 +59,19 @@ impl EventSink for TauriSink {
     }
 
     fn emit_status(&self, account_id: &str, status: AccountStatus) {
+        // Sesja zapisu żyje dokładnie tyle, co proces połączenia.
+        match status {
+            AccountStatus::Starting => {
+                if let Some((account, server)) = crate::connection::split_connection_id(account_id)
+                {
+                    self.chat_log.begin_session(account_id, server, account);
+                }
+            }
+            AccountStatus::Stopped | AccountStatus::Crashed => {
+                self.chat_log.end_session(account_id)
+            }
+            AccountStatus::AwaitingLogin | AccountStatus::Running | AccountStatus::Stopping => {}
+        }
         let _ = self.app.emit(
             "mcc://status",
             StatusPayload {
@@ -95,6 +119,78 @@ pub struct AppState {
     /// Bieżące ustawienia (znormalizowane). Trzymane też w pamięci, żeby
     /// komendy nie czytały pliku przy każdym wywołaniu.
     pub settings: Mutex<AppSettings>,
+    /// Zapis logów czatu (`PLAN.md` §5).
+    pub chat_log: Arc<ChatLog>,
+    /// Czy użytkownik potwierdził już zamknięcie okna. Dzięki temu drugie
+    /// zdarzenie `CloseRequested` (z `close_app`) nie pyta ponownie.
+    pub close_confirmed: AtomicBool,
+}
+
+/// Zwraca efektywny folder logów czatu (własny użytkownika albo domyślny).
+#[tauri::command]
+pub async fn chat_log_dir(state: State<'_, AppState>) -> Result<String, AppError> {
+    Ok(state.chat_log.root().to_string_lossy().into_owned())
+}
+
+/// Otwiera folder logów czatu w Eksploratorze.
+///
+/// Ścieżkę bierzemy z ustawień (nie z UI) i zakładamy folder, jeśli jeszcze go
+/// nie ma - przy wyłączonym zapisie nikt go nie tworzy, a użytkownik ma prawo
+/// zajrzeć do środka.
+#[tauri::command]
+pub async fn open_chat_log_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let dir = state.chat_log.root();
+    if let Err(error) = std::fs::create_dir_all(&dir) {
+        tracing::warn!(%error, dir = %dir.display(), "logi czatu: nie udało się utworzyć folderu");
+        return Err(AppError::with_params(
+            "chatlog.dirNotWritable",
+            json!({ "osError": error.raw_os_error().unwrap_or(-1) }),
+        ));
+    }
+
+    app.opener()
+        .open_path(dir.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|error| {
+            tracing::warn!(%error, "logi czatu: nie udało się otworzyć folderu");
+            AppError::new("chatlog.openFailed")
+        })
+}
+
+/// Otwiera natywne okno wyboru folderu logów czatu.
+///
+/// `None` oznacza anulowanie. Wybrany folder przechodzi tę samą walidację co
+/// przy zapisie ustawień (`validate_chat_log_dir`), żeby błąd pokazał się od razu,
+/// a nie dopiero po zapisaniu ustawień.
+#[tauri::command]
+pub async fn pick_chat_log_folder(app: AppHandle) -> Result<Option<String>, AppError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Chat logs")
+        .pick_folder(move |picked| {
+            let _ = tx.send(picked);
+        });
+
+    let picked = rx.await.map_err(|_| AppError::new("dialog.failed"))?;
+    let Some(folder) = picked else {
+        // Anulowanie nie jest błędem.
+        return Ok(None);
+    };
+
+    let path = folder.into_path().map_err(|error| {
+        tracing::warn!(%error, "nie udało się odczytać wybranego folderu");
+        AppError::new("dialog.failed")
+    })?;
+
+    let validated = crate::settings::validate_chat_log_dir(&path.to_string_lossy())?;
+    Ok(Some(validated.to_string_lossy().into_owned()))
 }
 
 /// Otwiera adres logowania Microsoft w domyślnej przeglądarce.
@@ -133,6 +229,23 @@ pub async fn copy_login_code(app: AppHandle, code: String) -> Result<(), AppErro
     })
 }
 
+/// Kopiuje zaznaczone wiersze logu do schowka systemowego.
+///
+/// Tekst przychodzi z widoku logu (przy „Kopiuj wszystko” może być długi), więc
+/// walidację robimy w `crate::clipboard`: długość, znaki sterujące i końce linii
+/// Windows. Tą samą drogą (plugin schowka po stronie Rusta) kopiujemy kod
+/// logowania - nie potrzebujemy do tego żadnego dodatkowego uprawnienia Tauri.
+#[tauri::command]
+pub async fn copy_text(app: AppHandle, text: String) -> Result<(), AppError> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+
+    let content = crate::clipboard::clipboard_text(&text)?;
+    app.clipboard().write_text(content).map_err(|error| {
+        tracing::warn!(%error, "nie udało się skopiować wierszy logu");
+        AppError::new("clipboard.writeFailed")
+    })
+}
+
 /// Zwraca bieżące ustawienia aplikacji.
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, AppError> {
@@ -151,6 +264,8 @@ pub async fn save_settings(
     state
         .manager
         .set_mcc_exe(normalized.mcc_path.as_deref().map(PathBuf::from));
+    // Zmiana folderu logów albo wyłączenie zapisu domyka bieżące sesje znacznikiem.
+    state.chat_log.apply_settings(&normalized);
     *state.settings.lock().await = normalized.clone();
     Ok(normalized)
 }
@@ -218,7 +333,10 @@ pub async fn reload_presets(state: State<'_, AppState>) -> Result<Vec<Preset>, A
 /// Używane przy starcie aplikacji (Etap 4).
 #[tauri::command]
 pub async fn list_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, AppError> {
-    Ok(state.store.load_accounts().await)
+    let accounts = state.store.load_accounts().await;
+    // Etykiety kont tworzą nazwy katalogów w folderze logów czatu.
+    state.chat_log.set_account_labels(&accounts);
+    Ok(accounts)
 }
 
 /// Zapisuje listę kont i rejestruje je w menedżerze (bez uruchamiania procesów).
@@ -231,6 +349,7 @@ pub async fn save_accounts(
     let normalized = crate::account::validate_accounts(accounts)?;
     state.store.save_accounts(&normalized).await?;
     state.manager.sync_accounts(&normalized).await;
+    state.chat_log.set_account_labels(&normalized);
     Ok(())
 }
 
@@ -349,6 +468,33 @@ pub async fn save_open_tabs(
     }
     state.store.save_session(&kept).await?;
     Ok(kept)
+}
+
+/// Zamyka aplikację po potwierdzeniu przez użytkownika.
+///
+/// Kolejność jest tu istotna: najpierw **łagodnie** zatrzymujemy połączenia
+/// (`/quit`), dopiero potem zamykamy okno. Dzięki temu zamknięcie z pytaniem
+/// jest równie czyste jak zamknięcie bez pytania, a Job Object zostaje jako
+/// gwarancja, że żaden proces MCC nie zostanie osierocony.
+///
+/// Ustawienie „nie pytaj więcej” zapisuje frontend **przed** wywołaniem tej
+/// komendy, więc tutaj nie ma nic do zapisania poza flagą potwierdzenia.
+#[tauri::command]
+pub async fn close_app(app: AppHandle, state: State<'_, AppState>) -> Result<(), AppError> {
+    state.close_confirmed.store(true, Ordering::SeqCst);
+    state.manager.stop_all().await;
+    // Dopisanie plików logów czatu: najpierw znaczniki końca, potem czekanie na
+    // opróżnienie kolejek (max kilka sekund).
+    state.chat_log.close_all().await;
+
+    let Some(window) = app.get_webview_window("main") else {
+        return Err(AppError::new("app.closeFailed"));
+    };
+    if let Err(error) = window.close() {
+        tracing::error!(%error, "nie udało się zamknąć okna");
+        return Err(AppError::new("app.closeFailed"));
+    }
+    Ok(())
 }
 
 /// Czy diagnostyka zamrożenia widoku logu jest włączona (opcjonalna,

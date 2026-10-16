@@ -5,6 +5,9 @@
 //! `MCC_EXECUTABLE`; wybór z UI i zapis w ustawieniach dojdą w Etapie 4.
 
 pub mod account;
+pub mod chatlog;
+pub mod clipboard;
+pub mod close;
 pub mod connection;
 pub mod device_code;
 pub mod diag;
@@ -23,10 +26,13 @@ mod launch;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
+use chatlog::ChatLog;
 use commands::{AppState, TauriSink};
 use process_manager::ProcessManager;
 use settings::AppSettings;
@@ -63,14 +69,34 @@ fn resolve_mcc_exe(settings: &AppSettings) -> Option<PathBuf> {
 pub fn run() {
     init_tracing();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Otwieranie adresu logowania (tylko `https://` z promptu MCC).
         .plugin(tauri_plugin_opener::init())
         // Schowek obsługujemy z Rusta, żeby WebView2 nie pokazywał natywnego
         // okna uprawnień przy `navigator.clipboard`.
         .plugin(tauri_plugin_clipboard_manager::init())
         // Natywny wybór pliku z `MinecraftClient.exe` (wołany z Rusta, bez uprawnień JS).
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    // Jedna instancja aplikacji **tylko w buildzie release**: `run-dev.bat`
+    // uruchamia build debug, więc kopia deweloperska musi dać się trzymać obok
+    // zainstalowanej wersji. Drugie uruchomienie tylko wyciąga istniejące okno
+    // na wierzch i kończy się samo.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        match app.get_webview_window("main") {
+            Some(window) => {
+                // Kolejność jak w Windows: najpierw odminimalizuj, potem pokaż
+                // i dopiero na końcu ustaw fokus.
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            None => tracing::warn!("drugie uruchomienie: nie znalazłem okna 'main'"),
+        }
+    }));
+
+    builder
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -111,24 +137,103 @@ pub fn run() {
                 );
             }
 
-            let sink = Arc::new(TauriSink::new(handle));
+            // Logi czatu (`PLAN.md` §5): serwis zapisuje linie wyjścia MCC
+            // w osobnym zadaniu, a błędy zapisu odbieramy tutaj i pokazujemy
+            // jako zwykły toast (`app://error`).
+            let (error_tx, mut error_rx) = tokio::sync::mpsc::unbounded_channel();
+            let chat_log = ChatLog::new(store.root().join(chatlog::LOGS_DIR), error_tx);
+            chat_log.apply_settings(&settings);
+            let saved_accounts = tauri::async_runtime::block_on(store.load_accounts());
+            chat_log.set_account_labels(&saved_accounts);
+
+            let sink = Arc::new(TauriSink::new(handle.clone(), chat_log.clone()));
             let manager = Arc::new(ProcessManager::new(mcc_exe, accounts_root, sink)?);
             app.manage(AppState {
                 manager: manager.clone(),
                 store,
                 settings: tokio::sync::Mutex::new(settings),
+                chat_log: chat_log.clone(),
+                close_confirmed: AtomicBool::new(false),
+            });
+
+            let errors_handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                while let Some(error) = error_rx.recv().await {
+                    if let Err(emit_error) = errors_handle.emit(
+                        "app://error",
+                        events::ErrorPayload {
+                            code: error.code,
+                            params: error.params,
+                        },
+                    ) {
+                        tracing::warn!(%emit_error, "nie udało się pokazać błędu zapisu logów czatu");
+                    }
+                }
+            });
+
+            // Retencja logów czatu: czyszczenie przy starcie (pierwszy „tick”
+            // przedawnia się natychmiast) i raz na dobę.
+            let retention_log = chat_log.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut ticker = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                loop {
+                    ticker.tick().await;
+                    let root = retention_log.root();
+                    let days = retention_log.retention_days();
+                    let today = chatlog::today();
+                    match tokio::task::spawn_blocking(move || {
+                        chatlog::purge_expired(&root, today, days)
+                    })
+                    .await
+                    {
+                        Ok(removed) => tracing::info!(removed, "logi czatu: czyszczenie zakończone"),
+                        Err(error) => tracing::warn!(%error, "logi czatu: czyszczenie nie powiodło się"),
+                    }
+                }
             });
 
             Ok(())
         })
-        // Przy zamknięciu okna próbujemy łagodnie zatrzymać procesy; gwarancją
-        // braku osieroconych procesów jest Job Object (kill-on-close).
+        // Zamknięcie okna obsługujemy w **jednym** miejscu, więc ta sama reguła
+        // działa dla przycisku w pasku tytułu, Alt+F4 i paska zadań.
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { .. } = event {
+            if let WindowEvent::CloseRequested { api, .. } = event {
                 let app = window.app_handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    app.state::<AppState>().manager.stop_all().await;
+
+                // Bez zamontowanego stanu nie ma czego sprawdzać - zamykamy jak dawniej.
+                let Some(state) = app.try_state::<AppState>() else {
+                    return;
+                };
+
+                // Obie blokady trzymamy tylko na chwilę (licznik połączeń i jedno pole
+                // ustawień), a ten wątek nie jest w kontekście asynchronicznym, więc
+                // `block_on` jest tu bezpieczny - tak samo jak przy starcie aplikacji.
+                let active = tauri::async_runtime::block_on(state.manager.active_count());
+                let confirm_setting = tauri::async_runtime::block_on(async {
+                    state.settings.lock().await.confirm_close
                 });
+                let already_confirmed = state.close_confirmed.load(Ordering::SeqCst);
+
+                if !close::should_confirm(confirm_setting, already_confirmed, active) {
+                    // Zamykamy: procesy zatrzymujemy w tle, a brak osieroconych
+                    // procesów gwarantuje dodatkowo Job Object (kill-on-close).
+                    tauri::async_runtime::spawn(async move {
+                        app.state::<AppState>().manager.stop_all().await;
+                    });
+                    return;
+                }
+
+                // Wstrzymujemy zamknięcie i pytamy użytkownika w interfejsie.
+                // Odpowiedzią jest komenda `close_app`; gdy użytkownik anuluje,
+                // nie dzieje się nic i okno zostaje otwarte.
+                api.prevent_close();
+                if let Err(error) = app.emit(
+                    "app://close-requested",
+                    events::CloseRequestedPayload { active },
+                ) {
+                    tracing::error!(%error, "nie udało się zapytać o zamknięcie aplikacji");
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -145,14 +250,19 @@ pub fn run() {
             commands::send_input_all,
             commands::open_login_url,
             commands::copy_login_code,
+            commands::copy_text,
             commands::get_settings,
             commands::save_settings,
             commands::pick_mcc_executable,
+            commands::chat_log_dir,
+            commands::open_chat_log_folder,
+            commands::pick_chat_log_folder,
             commands::list_presets,
             commands::save_presets,
             commands::reload_presets,
             commands::get_open_tabs,
             commands::save_open_tabs,
+            commands::close_app,
             commands::diag_enabled,
             commands::diag_report,
         ])

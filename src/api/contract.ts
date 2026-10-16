@@ -132,12 +132,24 @@ export interface JoinedPayload {
   accountId: string
 }
 
+/**
+ * Payload zdarzenia `app://close-requested`.
+ *
+ * Rust wysyła je, gdy użytkownik chce zamknąć okno, a działają połączenia:
+ * zamknięcie jest wstrzymane i to UI pyta, czy rozłączyć.
+ */
+export interface CloseRequestedPayload {
+  /** Ile połączeń zostanie rozłączonych, jeśli użytkownik potwierdzi. */
+  active: number
+}
+
 export const EVENTS = {
   log: 'mcc://log',
   status: 'mcc://status',
   error: 'app://error',
   deviceCode: 'mcc://device-code',
   joined: 'mcc://joined',
+  closeRequested: 'app://close-requested',
 } as const
 
 /**
@@ -152,6 +164,17 @@ export interface AppSettings {
   logBufferSize: number
   /** Czy przywracać zapisane zakładki przy starcie. */
   restoreTabs: boolean
+  /** Czy pytać o potwierdzenie, gdy zamknięcie okna przerywa połączenia. */
+  confirmClose: boolean
+  /** Czy zapisywać logi czatu do plików (domyślnie włączone). */
+  chatLogEnabled: boolean
+  /**
+   * Własny folder logów czatu; `null` = `<katalog danych aplikacji>/logs`.
+   * Rust zakłada folder i sprawdza zapisywalność przy zapisie ustawień.
+   */
+  chatLogDir: string | null
+  /** Ile dni przechowywać logi czatu (`0` = bez limitu). */
+  chatLogRetentionDays: number
   /** Historia adresów serwerów, najnowsze pierwsze. */
   serverHistory: string[]
 }

@@ -355,32 +355,52 @@ impl<S: EventSink> ProcessManager<S> {
     }
 
     /// Łagodnie zatrzymuje połączenie (`/quit`), a po timeoucie wymusza zamknięcie.
+    ///
     /// Wywołanie dla nieuruchomionego połączenia jest bezpiecznym „nic do zrobienia".
+    ///
+    /// Powtórne zatrzymanie połączenia, które **już** jest w stanie `Stopping`, nie jest
+    /// ignorowane - od razu wymuszamy kill. Powód: stan `Stopping` ustawia też `/quit`
+    /// wpisane przez użytkownika (`send_input`), a MCC potrafi taką linię zjeść jako
+    /// odpowiedź na swoje pytanie w konsoli i **nie zakończyć się** (patrz
+    /// `docs/MCC_NOTES.md` §3.2). Wcześniejsze ciche wyjście czyniło z przycisku
+    /// „Disconnect" martwy przycisk: proces żył dalej, a UI pokazywało `running`.
     pub async fn stop_connection(&self, connection_id: &str) -> Result<(), AppError> {
         if !self.running.lock().await.contains_key(connection_id) {
             return Ok(());
         }
 
-        {
+        // `true` = `/quit` poszło właśnie teraz, `false` = ta komenda była już wysłana
+        // wcześniej, więc nie wysyłamy jej drugi raz.
+        let quit_sent = {
             let mut running = self.running.lock().await;
-            if let Some(entry) = running.get_mut(connection_id) {
-                if entry.status == AccountStatus::Stopping {
-                    return Ok(());
-                }
+            let Some(entry) = running.get_mut(connection_id) else {
+                return Ok(());
+            };
+            if entry.status == AccountStatus::Stopping {
+                false
+            } else {
                 entry.status = AccountStatus::Stopping;
                 if let Some(stdin) = entry.stdin.as_mut() {
                     let _ = stdin.write_all(QUIT_COMMAND.as_bytes()).await;
                     let _ = stdin.write_all(b"\n").await;
                     let _ = stdin.flush().await;
                 }
+                true
             }
-        }
-        tracing::info!(connection = %connection_id, "wysłano /quit, czekam na zamknięcie");
+        };
+
         self.sink
             .emit_status(connection_id, AccountStatus::Stopping);
-
-        if self.wait_until_stopped(connection_id, STOP_TIMEOUT).await {
-            return Ok(());
+        if quit_sent {
+            tracing::info!(connection = %connection_id, "wysłano /quit, czekam na zamknięcie");
+            if self.wait_until_stopped(connection_id, STOP_TIMEOUT).await {
+                return Ok(());
+            }
+        } else {
+            tracing::warn!(
+                connection = %connection_id,
+                "ponowne zatrzymanie - nie czekam dłużej na /quit"
+            );
         }
 
         // Łagodne zamknięcie nie zadziałało - wymuszamy.
@@ -396,6 +416,14 @@ impl<S: EventSink> ProcessManager<S> {
         }
         let _ = self.wait_until_stopped(connection_id, STOP_TIMEOUT).await;
         Ok(())
+    }
+
+    /// Ile połączeń jest teraz w toku (`starting`, `awaiting_login`, `running`,
+    /// `stopping`). Używane przy zamykaniu okna: pytamy o potwierdzenie tylko
+    /// wtedy, gdy jest co przerywać. Wpis znika z mapy dopiero wtedy, gdy proces
+    /// się kończy, więc mapa trzyma wyłącznie połączenia w toku.
+    pub async fn active_count(&self) -> usize {
+        self.running.lock().await.len()
     }
 
     /// Zatrzymuje wszystkie połączenia (używane przy zamykaniu aplikacji).

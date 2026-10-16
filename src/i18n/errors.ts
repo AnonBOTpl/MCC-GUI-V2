@@ -17,6 +17,7 @@ const KNOWN_ERROR_CODES = new Set([
   'settings.languageInvalid',
   'settings.delayOutOfRange',
   'settings.bufferOutOfRange',
+  'settings.retentionOutOfRange',
   'store.writeFailed',
   'dialog.failed',
   'server.invalid',
@@ -54,7 +55,14 @@ const KNOWN_ERROR_CODES = new Set([
   'url.notAllowed',
   'url.openFailed',
   'clipboard.writeFailed',
+  'clipboard.tooLong',
+  'chatlog.dirEmpty',
+  'chatlog.dirNotAbsolute',
+  'chatlog.dirNotWritable',
+  'chatlog.openFailed',
+  'chatlog.writeFailed',
   'app.unexpectedError',
+  'app.closeFailed',
 ])
 
 /**

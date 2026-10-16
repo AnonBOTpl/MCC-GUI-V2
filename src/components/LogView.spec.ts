@@ -1,10 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h, nextTick, ref } from 'vue'
+import { backend } from '../api/backend'
 import { i18n } from '../i18n'
 import { useLogsStore } from '../stores/logs'
 import LogView from './LogView.vue'
+
+// Schowek zapisujemy po stronie Rusta (`copy_text`), więc w testach podstawiamy
+// tylko tę jedną komendę.
+vi.mock('../api/backend', () => ({
+  backend: { copyText: vi.fn() },
+  events: {},
+}))
 
 /**
  * Okno aplikacji trzyma `follow` i podaje je przez `v-model`. Własny komponent
@@ -53,6 +61,257 @@ async function settle(): Promise<void> {
   await flushPromises()
   await flushPromises()
 }
+
+describe('LogView - zaznaczanie i kopiowanie', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    )
+    vi.mocked(backend.copyText).mockReset()
+    vi.mocked(backend.copyText).mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  /**
+   * Bufor z pięcioma liniami (z kodem koloru `§a`, żeby sprawdzić, że kopiowany
+   * tekst jest czysty). Wiersze trafiają do DOM bez stubowania geometrii, bo
+   * widok startuje z górnej partii bufora.
+   */
+  async function setup(count = 5) {
+    const wrapper = mount(LogView, {
+      props: { accountId: 'acc::srv', follow: true },
+      global: { plugins: [i18n] },
+    })
+    const logs = useLogsStore()
+    logs.append(
+      'acc::srv',
+      Array.from({ length: count }, (_, index) => ({
+        stream: 'stdout' as const,
+        raw: `\u00a7alinia ${index + 1}`,
+        ts: index,
+      })),
+      'acc::srv',
+    )
+    logs.flushNow()
+    await nextTick()
+
+    const viewport = wrapper.find('.log-text.overflow-auto')
+    return { wrapper, logs, viewport }
+  }
+
+  /** Wiersze widoczne w DOM (w kolejności bufora). */
+  function rows(wrapper: VueWrapper) {
+    return wrapper.findAll('[data-seq]')
+  }
+
+  function selected(wrapper: VueWrapper): string[] {
+    return wrapper.findAll('.log-row-selected').map((node) => node.text())
+  }
+
+  it('klik zaznacza jeden wiersz i wyłącza autoprzewijanie', async () => {
+    const { wrapper } = await setup()
+
+    await rows(wrapper)[1].trigger('click')
+
+    expect(selected(wrapper)).toEqual(['linia 2'])
+    expect(wrapper.emitted('update:follow')).toEqual([[false]])
+  })
+
+  it('Ctrl+klik dodaje wiersz do zaznaczenia, a kolejny Ctrl+klik go odejmuje', async () => {
+    const { wrapper } = await setup()
+
+    await rows(wrapper)[0].trigger('click')
+    await rows(wrapper)[2].trigger('click', { ctrlKey: true })
+    expect(selected(wrapper)).toEqual(['linia 1', 'linia 3'])
+
+    await rows(wrapper)[2].trigger('click', { ctrlKey: true })
+    expect(selected(wrapper)).toEqual(['linia 1'])
+  })
+
+  it('Shift+klik zaznacza zakres od kotwicy, zastępując poprzednie zaznaczenie', async () => {
+    const { wrapper } = await setup()
+
+    await rows(wrapper)[3].trigger('click')
+    await rows(wrapper)[1].trigger('click', { shiftKey: true })
+
+    // Zakres od kotwicy (wiersz 4) w górę do klikniętego wiersza 2.
+    expect(selected(wrapper)).toEqual(['linia 2', 'linia 3', 'linia 4'])
+  })
+
+  it('Ctrl+Shift+klik dodaje zakres do istniejącego zaznaczenia', async () => {
+    const { wrapper } = await setup()
+
+    await rows(wrapper)[0].trigger('click')
+    await rows(wrapper)[2].trigger('click', { ctrlKey: true }) // kotwica = wiersz 3
+    await rows(wrapper)[4].trigger('click', { ctrlKey: true, shiftKey: true })
+
+    expect(selected(wrapper)).toEqual(['linia 1', 'linia 3', 'linia 4', 'linia 5'])
+  })
+
+  it('Shift+klik nie uruchamia natywnego zaznaczania tekstu', async () => {
+    const { wrapper } = await setup()
+
+    const shiftClick = new MouseEvent('mousedown', { shiftKey: true, cancelable: true })
+    rows(wrapper)[2].element.dispatchEvent(shiftClick)
+    expect(shiftClick.defaultPrevented).toBe(true)
+
+    // Zwykły klik zostawia natywne zaznaczanie tekstu w spokoju.
+    const plainClick = new MouseEvent('mousedown', { cancelable: true })
+    rows(wrapper)[2].element.dispatchEvent(plainClick)
+    expect(plainClick.defaultPrevented).toBe(false)
+  })
+
+  it('Ctrl+C kopiuje zaznaczone wiersze jako czysty tekst', async () => {
+    const { wrapper, viewport } = await setup()
+
+    await rows(wrapper)[0].trigger('click')
+    await rows(wrapper)[2].trigger('click', { shiftKey: true })
+    await viewport.trigger('keydown', { key: 'c', ctrlKey: true })
+    await flushPromises()
+
+    expect(backend.copyText).toHaveBeenCalledWith('linia 1\nlinia 2\nlinia 3')
+    // Po skopiowaniu zaznaczenie znika, a autoprzewijanie wraca.
+    expect(selected(wrapper)).toHaveLength(0)
+    expect(wrapper.emitted('update:follow')?.at(-1)).toEqual([true])
+  })
+
+  it('po obcięciu bufora zaznaczenie obejmuje tylko to, co zostało', async () => {
+    const { wrapper, viewport, logs } = await setup()
+
+    await rows(wrapper)[0].trigger('click')
+    await rows(wrapper)[2].trigger('click', { shiftKey: true })
+    await rows(wrapper)[4].trigger('click', { ctrlKey: true })
+    // Bufor obcina wszystko oprócz ostatniej linii (wiersze 1-4 wypadają).
+    logs.setLimit(1)
+    logs.flushNow()
+    await nextTick()
+
+    await viewport.trigger('keydown', { key: 'c', ctrlKey: true })
+    await flushPromises()
+
+    expect(backend.copyText).toHaveBeenCalledWith('linia 5')
+  })
+
+  it('gdy obcięto wszystkie zaznaczone linie, kopiowanie nic nie wysyła', async () => {
+    const { wrapper, viewport, logs } = await setup()
+
+    await rows(wrapper)[0].trigger('click')
+    logs.clear('acc::srv')
+    logs.flushNow()
+    await nextTick()
+
+    await viewport.trigger('keydown', { key: 'c', ctrlKey: true })
+    await flushPromises()
+
+    expect(backend.copyText).not.toHaveBeenCalled()
+  })
+
+  it('nieudane kopiowanie zostawia zaznaczenie w spokoju', async () => {
+    vi.mocked(backend.copyText).mockRejectedValue({ code: 'clipboard.writeFailed', params: {} })
+    const { wrapper, viewport } = await setup()
+
+    await rows(wrapper)[0].trigger('click')
+    await viewport.trigger('keydown', { key: 'c', ctrlKey: true })
+    await flushPromises()
+
+    expect(selected(wrapper)).toEqual(['linia 1'])
+    expect(wrapper.emitted('update:follow')?.at(-1)).toEqual([false])
+  })
+
+  it('Ctrl+C bez zaznaczenia nie przechwytuje kopiowania', async () => {
+    const { viewport } = await setup()
+
+    await viewport.trigger('keydown', { key: 'c', ctrlKey: true })
+    await flushPromises()
+
+    expect(backend.copyText).not.toHaveBeenCalled()
+  })
+
+  it('Ctrl+A zaznacza cały bufor, Esc czyści zaznaczenie i wraca do autoprzewijania', async () => {
+    const { wrapper, viewport } = await setup()
+
+    await viewport.trigger('keydown', { key: 'a', ctrlKey: true })
+    expect(selected(wrapper)).toHaveLength(5)
+
+    await viewport.trigger('keydown', { key: 'Escape' })
+    expect(selected(wrapper)).toHaveLength(0)
+    expect(wrapper.emitted('update:follow')?.at(-1)).toEqual([true])
+  })
+
+  it('Esc dociąga widok do końca logu', async () => {
+    const { wrapper } = await setup()
+    const element = wrapper.find('.log-text.overflow-auto').element as HTMLElement
+    stubGeometry(element, 200, 2000)
+    await flushPromises()
+
+    // Widok zjeżdża na dół przy starcie; przewijamy go „ręką” i zaznaczamy wiersz.
+    element.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -100 }))
+    element.scrollTop = 400
+    await rows(wrapper)[0].trigger('click')
+    expect(element.scrollTop).toBe(400)
+
+    await wrapper.find('.log-text.overflow-auto').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    await flushPromises()
+
+    expect(element.scrollTop).toBe(1800) // koniec logu = scrollHeight - clientHeight
+  })
+
+  it('skróty nie działają poza widokiem logu', async () => {
+    const { wrapper } = await setup()
+
+    // Zdarzenie poza elementem widoku (np. pole wpisywania komend) nie może
+    // zaznaczać logu pod spodem.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }))
+    await nextTick()
+
+    expect(selected(wrapper)).toHaveLength(0)
+  })
+
+  it('menu kontekstowe: „Kopiuj” nieaktywne bez zaznaczenia, „Kopiuj wszystko” kopiuje bufor', async () => {
+    const { wrapper, viewport } = await setup()
+
+    await viewport.trigger('contextmenu', { clientX: 40, clientY: 40 })
+    const items = wrapper.findAll('[role="menuitem"]')
+    expect(items).toHaveLength(2)
+    expect(items[0].attributes('disabled')).toBeDefined()
+
+    await items[1].trigger('click')
+    await flushPromises()
+
+    expect(backend.copyText).toHaveBeenCalledWith(
+      'linia 1\nlinia 2\nlinia 3\nlinia 4\nlinia 5',
+    )
+    // Menu zamyka się po użyciu.
+    expect(wrapper.findAll('[role="menuitem"]')).toHaveLength(0)
+  })
+
+  it('menu kontekstowe: „Kopiuj” kopiuje tylko zaznaczone wiersze', async () => {
+    const { wrapper, viewport } = await setup()
+
+    await rows(wrapper)[1].trigger('click')
+    await viewport.trigger('contextmenu', { clientX: 40, clientY: 40 })
+    const items = wrapper.findAll('[role="menuitem"]')
+    expect(items[0].attributes('disabled')).toBeUndefined()
+
+    await items[0].trigger('click')
+    await flushPromises()
+
+    expect(backend.copyText).toHaveBeenCalledWith('linia 2')
+    // Kopiowanie z menu też czyści zaznaczenie i wraca do autoprzewijania.
+    expect(selected(wrapper)).toHaveLength(0)
+    expect(wrapper.emitted('update:follow')?.at(-1)).toEqual([true])
+  })
+})
 
 describe('LogView - aktualizacja widoku', () => {
   beforeEach(() => {

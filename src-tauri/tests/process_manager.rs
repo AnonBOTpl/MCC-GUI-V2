@@ -459,6 +459,64 @@ async fn user_quit_is_stopped_not_crashed() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Regresja: `/quit` wpisane przez użytkownika może nie zamknąć procesu (MCC zjada tę
+/// linię jako odpowiedź na swoje pytanie - `docs/MCC_NOTES.md` §3.2), ale nasz stan
+/// wewnętrzny i tak staje się `Stopping`. Kolejne zatrzymanie (przycisk „Disconnect”)
+/// musi wtedy **wymusić kill**; wcześniej było cichym „nic do zrobienia”, więc proces
+/// zostawał uruchomiony, a UI pokazywało `running` bez sposobu, żeby go zatrzymać.
+#[tokio::test]
+async fn repeated_stop_forces_kill_when_quit_is_ignored() {
+    let (collector, dir, manager) = started_manager().await;
+    manager
+        .add_account(account("a", &[]))
+        .await
+        .expect("dodanie konta");
+    manager
+        .add_server("a", SERVER, None)
+        .await
+        .expect("dodanie serwera");
+    // Wyzwalacz musi istnieć **przed** startem procesu (atrapa czyta go raz, na starcie).
+    std::fs::write(dir.join("a").join("fake-ignore-quit"), b"1").expect("wyzwalacz");
+    manager
+        .start_connection("a", SERVER)
+        .await
+        .expect("start połączenia");
+    assert!(wait_for(&collector, saw_running, Duration::from_secs(5)).await);
+
+    // Użytkownik wpisuje `/quit`: atrapa je ignoruje, proces żyje (jak MCC na promptcie).
+    manager
+        .send_input(&conn("a", SERVER), "/quit")
+        .await
+        .expect("wysłanie /quit");
+    assert!(
+        wait_for(
+            &collector,
+            |events| has_line(events, "§8[fake] ignoruję /quit"),
+            Duration::from_secs(5)
+        )
+        .await,
+        "atrapa powinna zignorować /quit"
+    );
+    assert_eq!(manager.active_count().await, 1, "proces nadal działa");
+
+    // „Disconnect”: drugie zatrzymanie musi wymusić kill.
+    manager
+        .stop_connection(&conn("a", SERVER))
+        .await
+        .expect("zatrzymanie połączenia");
+    assert_eq!(
+        manager.active_count().await,
+        0,
+        "powtórne zatrzymanie powinno zabić proces"
+    );
+    assert!(
+        !status_events(&collector.snapshot()).contains(&AccountStatus::Crashed),
+        "wymuszone zatrzymanie na życzenie użytkownika nie jest awarią"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn restart_connection_restarts_the_process() {
     let (collector, dir, manager) = started_manager().await;
@@ -749,5 +807,35 @@ async fn missing_mcc_path_errors() {
             .code,
         "mcc.executableNotSet"
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Licznik aktywnych połączeń jest podstawą pytania o zamknięcie aplikacji
+/// (`close::should_confirm`): pytamy tylko wtedy, gdy jest co przerywać.
+#[tokio::test]
+async fn active_count_follows_running_connections() {
+    let (collector, dir, manager) = started_manager().await;
+
+    assert_eq!(
+        manager.active_count().await,
+        0,
+        "świeży menedżer nie ma aktywnych połączeń"
+    );
+
+    start_account(&manager, &dir, "a", SERVER, false).await;
+    assert!(wait_for(&collector, saw_running, Duration::from_secs(5)).await);
+    assert_eq!(manager.active_count().await, 1);
+
+    manager
+        .stop_connection(&conn("a", SERVER))
+        .await
+        .expect("zatrzymanie połączenia");
+
+    assert_eq!(
+        manager.active_count().await,
+        0,
+        "po zatrzymaniu licznik musi wrócić do zera"
+    );
+
     let _ = std::fs::remove_dir_all(&dir);
 }

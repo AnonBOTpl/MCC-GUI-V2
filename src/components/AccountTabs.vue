@@ -2,6 +2,7 @@
 // Zakładki: jedna na **połączenie** (konto + serwer), bo to jedno połączenie
 // odpowiada jednemu procesowi MCC.
 
+import { nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { X } from '@lucide/vue'
 import { statusDotClass, statusKey } from '../log/status'
@@ -11,6 +12,75 @@ import { useLogsStore } from '../stores/logs'
 const { t } = useI18n()
 const accounts = useAccountsStore()
 const logs = useLogsStore()
+
+/** Pasek zakładek - przewijany w poziomie przy przepełnieniu. */
+const tabsScroller = ref<HTMLElement | null>(null)
+
+/** Elementy zakładek po identyfikatorze połączenia (do dosuwania do widoku). */
+const tabElements = new Map<string, HTMLElement>()
+
+/**
+ * Zapamiętuje element zakładki. Vue woła tę funkcję z `null` przy odmontowaniu,
+ * więc mapa sama się oczyszcza po zamknięciu zakładki.
+ */
+function setTabElement(id: string, element: unknown): void {
+  if (element instanceof HTMLElement) tabElements.set(id, element)
+  else tabElements.delete(id)
+}
+
+/**
+ * Dosuwa aktywną zakładkę do widoku - bez tego przy kilkudziesięciu zakładkach
+ * aktywna potrafi zostać poza ekranem, a użytkownik nie widzi, gdzie jest.
+ *
+ * Liczymy `scrollLeft` sami, zamiast `scrollIntoView`, żeby nie ruszać
+ * ewentualnego przewijania przodków i żeby zachowanie było przewidywalne.
+ */
+async function scrollActiveIntoView(): Promise<void> {
+  await nextTick()
+  const container = tabsScroller.value
+  const id = accounts.activeConnectionId
+  if (!container || !id) return
+
+  const element = tabElements.get(id)
+  if (!element) return
+
+  const left = element.offsetLeft
+  const right = left + element.offsetWidth
+  if (left < container.scrollLeft) {
+    container.scrollLeft = left
+  } else if (right > container.scrollLeft + container.clientWidth) {
+    container.scrollLeft = right - container.clientWidth
+  }
+}
+
+onMounted(() => {
+  void scrollActiveIntoView()
+})
+
+// Zakładki zmieniają się przy przełączaniu, dodawaniu i po przywróceniu sesji.
+watch(
+  () => [accounts.activeConnectionId, accounts.connections.length],
+  () => {
+    void scrollActiveIntoView()
+  },
+)
+
+/**
+ * Kółko myszy nad paskiem zakładek przewija go poziomo. Gdy nie ma czego
+ * przewijać, nie ruszamy zdarzenia - niech działa domyślne zachowanie.
+ */
+function onWheel(event: WheelEvent): void {
+  const container = tabsScroller.value
+  if (!container) return
+
+  const maxScroll = container.scrollWidth - container.clientWidth
+  if (maxScroll <= 0) return
+
+  // Pionowe kółko przesuwamy w poziomie; oś pozioma (touchpad) działa jak dotąd.
+  const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX
+  container.scrollLeft = Math.max(0, Math.min(maxScroll, container.scrollLeft + delta))
+  event.preventDefault()
+}
 
 function unreadFor(id: string): number {
   // `logs.activeRevision` w zależności wymusza przeliczenie po partii linii.
@@ -26,15 +96,18 @@ function accountLabel(accountId: string): string {
 <template>
   <div
     v-if="accounts.connections.length > 0"
-    class="flex shrink-0 items-stretch overflow-x-auto border-b border-slate-800 bg-slate-950"
+    ref="tabsScroller"
+    class="relative flex shrink-0 items-stretch overflow-x-auto border-b border-slate-800 bg-slate-950"
     role="tablist"
+    @wheel="onWheel"
   >
     <!-- Zakładka i przycisk zamknięcia to osobne elementy: zagnieżdżony
          `<button>` w `<button>` jest niepoprawnym HTML-em i psuje dostępność. -->
     <div
       v-for="conn in accounts.connections"
       :key="conn.id"
-      class="flex items-stretch border-b-2 transition-colors"
+      :ref="(el) => setTabElement(conn.id, el)"
+      class="flex shrink-0 items-stretch border-b-2 transition-colors"
       :class="
         conn.id === accounts.activeConnectionId
           ? 'border-blue-500 bg-slate-900'

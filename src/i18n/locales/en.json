@@ -9,7 +9,6 @@
     "close": "Close"
   },
   "language": {
-    "label": "Language",
     "en": "English",
     "pl": "Polish"
   },
@@ -23,14 +22,34 @@
     "browse": "Browse",
     "restoreTabs": "Restore tabs on start",
     "restoreTabsHint": "Brings back the tabs you had open, each one stopped - nothing connects on its own. When off, the app starts with no tabs. Your accounts always come back to the panel - this switch never hides them.",
+    "confirmClose": "Ask before closing with live connections",
+    "confirmCloseHint": "Shows a question when closing the window would disconnect the connections that are running. You can also tick “Don't ask again” in the question itself.",
     "sendDelay": "Delay between accounts",
     "sendDelayHint": "Pause between accounts when sending to all, to avoid server anti-spam.",
     "sendDelayUnit": "ms",
     "logBuffer": "Log lines kept per account",
     "logBufferHint": "How far back you can scroll in a tab. More lines use more memory.",
     "logBufferUnit": "lines",
+    "chatLogToggle": "Save chat logs to files",
+    "chatLogHint": "Everything each account sees and says is appended to a file for the day, including private messages from other players - those stay on this computer. Login codes and links are never written down.",
+    "chatLogDir": "Log folder",
+    "chatLogDefault": "Default location",
+    "chatLogChange": "Change",
+    "chatLogOpen": "Open folder",
+    "chatLogDirHint": "Inside this folder files are grouped by server and account: server/account/YYYY-MM-DD.log.",
+    "chatLogUseDefault": "Use the default folder",
+    "chatLogRetention": "Keep chat logs for",
+    "chatLogRetentionHint": "Older daily files are deleted at startup and once a day. Enter 0 to keep everything.",
+    "chatLogRetentionUnit": "days",
     "save": "Save",
     "cancel": "Cancel"
+  },
+  "closeConfirm": {
+    "title": "Close and disconnect?",
+    "message": "Closing the app will disconnect {count} connection. | Closing the app will disconnect {count} connections.",
+    "dontAsk": "Don't ask again",
+    "confirm": "Close and disconnect",
+    "cancel": "Keep running"
   },
   "accountType": {
     "microsoft": "Microsoft",
@@ -88,7 +107,11 @@
   },
   "log": {
     "empty": "No output yet.",
-    "follow": "Following"
+    "follow": "Following",
+    "menu": {
+      "copy": "Copy",
+      "copyAll": "Copy all"
+    }
   },
   "loginBanner": {
     "title": "Sign in to Microsoft",
@@ -170,7 +193,8 @@
     "settings": {
       "languageInvalid": "That language is not supported.",
       "delayOutOfRange": "The delay must be between 0 and {max} ms.",
-      "bufferOutOfRange": "The log buffer must be between {min} and {max} lines."
+      "bufferOutOfRange": "The log buffer must be between {min} and {max} lines.",
+      "retentionOutOfRange": "Chat logs must be kept between 0 and {max} days."
     },
     "store": {
       "writeFailed": "Could not save the settings file."
@@ -228,10 +252,19 @@
       "openFailed": "Could not open the link in your browser."
     },
     "clipboard": {
-      "writeFailed": "Could not copy the code to the clipboard."
+      "writeFailed": "Could not copy to the clipboard.",
+      "tooLong": "That selection is too large to copy ({limit} characters max)."
+    },
+    "chatlog": {
+      "dirEmpty": "Pick a folder for the chat logs.",
+      "dirNotAbsolute": "The log folder must be a full path.",
+      "dirNotWritable": "That log folder cannot be created or written to.",
+      "openFailed": "Could not open the log folder.",
+      "writeFailed": "Could not save the chat log of {accountId} on {server}. Saving is off for this connection."
     },
     "app": {
-      "unexpectedError": "Something went wrong."
+      "unexpectedError": "Something went wrong.",
+      "closeFailed": "Could not close the application."
     }
   }
 }

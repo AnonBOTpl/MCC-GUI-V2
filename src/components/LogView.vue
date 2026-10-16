@@ -14,7 +14,7 @@
 
 import { computed, nextTick, onMounted, onUnmounted, onUpdated, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown } from '@lucide/vue'
+import { ArrowDown, ClipboardCopy, Copy } from '@lucide/vue'
 import type { LogLine } from '../log/buffer'
 import {
   formatStateAfter,
@@ -26,15 +26,26 @@ import {
 } from '../log/color'
 import { diagCounters, setViewProbe, type ViewProbe } from '../log/diag'
 import { followAfterScroll } from '../log/follow'
+import {
+  allLinesText,
+  pruneSelection,
+  selectionText,
+  type RowSelection,
+  type SeqBounds,
+} from '../log/selection'
 import { registerWakeHandlers } from '../log/wake'
 import { wrapRowCount } from '../log/wrap'
+import { useAccountsStore } from '../stores/accounts'
 import { useLogsStore } from '../stores/logs'
+import { useSelectionStore } from '../stores/selection'
 
 const props = defineProps<{ accountId: string; follow: boolean }>()
 const emit = defineEmits<{ (event: 'update:follow', value: boolean): void }>()
 
 const { t } = useI18n()
 const logs = useLogsStore()
+const accounts = useAccountsStore()
+const selections = useSelectionStore()
 
 /** Wysokość jednego wiersza wizualnego — zgodna z `leading-[18px]`. */
 const ROW_HEIGHT = 18
@@ -175,6 +186,210 @@ const renderedRows = computed(() => {
   return rows
 })
 
+/* -------------------------------------------------------------------------
+ * Zaznaczanie i kopiowanie wierszy (Paczka 3)
+ *
+ * Zaznaczamy wiersze po numerze `seq`, a nie natywnym zaznaczaniem tekstu, bo
+ * lista jest wirtualizowana (poza oknem nie ma elementów DOM). Logika siedzi
+ * w `src/log/selection.ts`, a stan - osobno dla każdego połączenia - w store
+ * `stores/selection.ts`, więc przełączenie zakładki nie gubi zaznaczenia.
+ * ------------------------------------------------------------------------- */
+
+/** Zaznaczenie tego połączenia; zmiana zakładki przestawia referencję. */
+const selection = ref<RowSelection>(selections.forConnection(props.accountId))
+
+/** Liczba zaznaczonych wierszy (reaktywna - `Set` w store jest reaktywny). */
+const selectedCount = computed(() => selection.value.selected.size)
+
+/** Pozycja menu kontekstowego (`null` = zamknięte). */
+const menu = ref<{ x: number; y: number } | null>(null)
+const menuElement = ref<HTMLElement | null>(null)
+
+/** Przybliżony rozmiar menu - tylko po to, żeby nie wystawało poza okno. */
+const MENU_WIDTH = 168
+const MENU_HEIGHT = 72
+
+function isSelected(seq: number): boolean {
+  return selection.value.selected.has(seq)
+}
+
+/**
+ * Klasy wiersza: zaznaczenie wygrywa z tłem błędu i z podświetleniem `hover`.
+ * Zaznaczony wiersz opisuje klasa ze `<style>` - tło z kryciem i wewnętrzny pasek
+ * z lewej nie zmieniają szerokości tekstu, więc zawijanie i pomiary wysokości
+ * wierszy zostają bez zmian.
+ */
+function rowClass(row: { seq: number; isError: boolean }): string {
+  if (isSelected(row.seq)) return 'log-row-selected'
+  return row.isError ? 'bg-red-950/40 hover:bg-slate-900/60' : 'hover:bg-slate-900/60'
+}
+
+/** Zakres numerów linii, które są jeszcze w buforze (do przycinania zakresów). */
+function seqBounds(): SeqBounds {
+  const lines = allLines.value
+  const first = lines[0]?.seq
+  const last = lines[lines.length - 1]?.seq
+  if (first === undefined || last === undefined) return { min: 0, max: -1 }
+  return { min: first, max: last }
+}
+
+/** Fokus w widoku logu - skróty (`Ctrl+A`, `Ctrl+C`, `Esc`) działają tylko tutaj. */
+function focusViewport(): void {
+  viewport.value?.focus()
+}
+
+/**
+ * Czyści natywne zaznaczenie tekstu, żeby nie kłóciło się z podświetleniem
+ * wierszy (np. po wcześniejszym zaznaczeniu myszką).
+ */
+function clearNativeSelection(): void {
+  const native = window.getSelection?.()
+  if (native && !native.isCollapsed) native.removeAllRanges()
+}
+
+/** Klik w wiersz (z modyfikatorami `Ctrl` i `Shift` - patrz tabela w Paczce 3). */
+function onRowClick(event: MouseEvent, seq: number): void {
+  focusViewport()
+  const id = props.accountId
+
+  if (event.shiftKey) {
+    if (event.ctrlKey || event.metaKey) selections.addRangeFromAnchor(id, seq, seqBounds())
+    else selections.selectRangeFromAnchor(id, seq, seqBounds())
+  } else if (event.ctrlKey || event.metaKey) {
+    selections.toggleRow(id, seq)
+  } else {
+    selections.selectRow(id, seq)
+  }
+  clearNativeSelection()
+}
+
+/**
+ * `Shift+klik` nie może uruchomić natywnego zaznaczania tekstu - inaczej
+ * przeglądarka zaznaczałaby tekst obok naszego podświetlenia (blokujemy tylko
+ * `Shift`, więc da się nadal zaznaczyć np. fragment adresu z logu).
+ */
+function onRowMouseDown(event: MouseEvent): void {
+  if (!event.shiftKey) return
+  event.preventDefault()
+  focusViewport()
+}
+
+/** Menu kontekstowe: prawy przycisk myszy w widoku logu. */
+function onContextMenu(event: MouseEvent): void {
+  focusViewport()
+  menu.value = {
+    x: Math.max(0, Math.min(event.clientX, window.innerWidth - MENU_WIDTH)),
+    y: Math.max(0, Math.min(event.clientY, window.innerHeight - MENU_HEIGHT)),
+  }
+}
+
+function closeMenu(): void {
+  menu.value = null
+}
+
+/**
+ * Zapisuje w schowku tekst zaznaczonych wierszy (walidacja tekstu jest w Rustcie).
+ * Zwraca `false`, gdy nic nie wysłano albo Rust odrzucił zapis - wtedy nie ruszamy
+ * zaznaczenia, żeby użytkownik nie stracił go przez nieudane kopiowanie.
+ */
+async function copyText(text: string): Promise<boolean> {
+  if (text === '') return false
+  return accounts.copyText(text)
+}
+
+/**
+ * Czyści zaznaczenie i **wraca do autoprzewijania**, dociągając widok do końca logu
+ * (decyzja użytkownika: po skopiowaniu i po `Esc` widok jedzie za nowymi liniami).
+ */
+function clearSelectionAndFollow(): void {
+  selections.clear(props.accountId)
+  emit('update:follow', true)
+  stickToBottom()
+}
+
+/** „Kopiuj”: zaznaczone wiersze z bieżącego bufora, bez kodów kolorów. */
+async function copySelectedLines(): Promise<void> {
+  // Linie, które obciął bufor, przestają być zaznaczone - kopiujemy to, co zostało.
+  const lines = allLines.value
+  pruneSelection(selection.value, lines)
+  const copied = await copyText(selectionText(lines, selection.value))
+  if (!copied) return
+  // Po udanym skopiowaniu zaznaczenie znika, a widok wraca na koniec logu.
+  clearSelectionAndFollow()
+}
+
+/** „Kopiuj” z menu kontekstowego. */
+async function copySelected(): Promise<void> {
+  closeMenu()
+  focusViewport()
+  await copySelectedLines()
+}
+
+/** „Kopiuj wszystko”: cały bufor połączenia. */
+async function copyAll(): Promise<void> {
+  closeMenu()
+  focusViewport()
+  await copyText(allLinesText(allLines.value))
+}
+
+/**
+ * Skróty klawiszowe widoku logu - jedyne skróty w aplikacji (decyzja z Paczki 3).
+ *
+ * Wiszą na elemencie widoku logu, więc pole wpisywania komend (poza nim) ma
+ * nietknięte `Ctrl+A` i `Ctrl+C`. Gdy nie mamy własnego zaznaczenia, `Ctrl+C`
+ * przepuszczamy - działa wtedy natywne kopiowanie zaznaczonego tekstu.
+ */
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    if (menu.value) {
+      closeMenu()
+      event.preventDefault()
+      return
+    }
+    if (selectedCount.value > 0) {
+      clearSelectionAndFollow()
+      event.preventDefault()
+    }
+    return
+  }
+  if (!event.ctrlKey && !event.metaKey) return
+
+  const key = event.key.toLowerCase()
+  if (key === 'a') {
+    event.preventDefault()
+    selections.selectAll(
+      props.accountId,
+      allLines.value.map((line) => line.seq),
+    )
+    clearNativeSelection()
+    return
+  }
+  if (key === 'c') {
+    if (selectedCount.value === 0) return
+    event.preventDefault()
+    void copySelectedLines()
+  }
+}
+
+/** Zamknięcie menu przy kliknięciu poza nim (nasze własne pozycje klikamy normalnie). */
+function onDocumentPointerDown(event: PointerEvent): void {
+  if (!menu.value) return
+  const element = menuElement.value
+  if (element && event.target instanceof Node && element.contains(event.target)) return
+  closeMenu()
+}
+
+/** Przewijanie zamyka menu - inaczej zostałoby w miejscu, gdzie już nic nie ma. */
+function onDocumentScroll(): void {
+  if (menu.value) closeMenu()
+}
+
+// Zaznaczenie wyłącza autoprzewijanie tej zakładki (flaga per połączenie),
+// żeby nowe linie nie uciekały z widoku w trakcie kopiowania.
+watch(selectedCount, (count) => {
+  if (count > 0) emit('update:follow', false)
+})
+
 /**
  * Czy ostatnia zmiana pozycji to nasze własne dociągnięcie do dołu.
  *
@@ -308,6 +523,10 @@ let disposeWakeHandlers: (() => void) | undefined
 onMounted(() => {
   measureLayout()
   disposeWakeHandlers = registerWakeHandlers(window, onWake)
+  // Zamknięcie menu kontekstowego przy kliknięciu poza nim i przy przewijaniu
+  // (nasłuch w fazie przechwytywania, bo przewija się wewnętrzny kontener).
+  document.addEventListener('pointerdown', onDocumentPointerDown, true)
+  window.addEventListener('scroll', onDocumentScroll, true)
   // Diagnostyka: widok zgłasza swój stan (patrz `src/log/diag.ts`).
   setViewProbe(viewSnapshot)
   const element = viewport.value
@@ -331,6 +550,8 @@ onUpdated(() => {
 
 onUnmounted(() => {
   disposeWakeHandlers?.()
+  document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+  window.removeEventListener('scroll', onDocumentScroll, true)
   setViewProbe(null)
   resizeObserver?.disconnect()
 })
@@ -350,10 +571,13 @@ watch(
   },
 )
 
-// Zmiana konta: czyścimy pomiary i idziemy na dół.
+// Zmiana konta: czyścimy pomiary, zamykamy menu i idziemy na dół. Zaznaczenie
+// jest trzymane per połączenie, więc przełączenie zakładki go nie gubi.
 watch(
   () => props.accountId,
-  () => {
+  (id) => {
+    selection.value = selections.forConnection(id)
+    closeMenu()
     measured.clear()
     measuredVersion.value += 1
     scrollTop.value = 0
@@ -392,13 +616,18 @@ const showJumpButton = computed(() => {
       class="log-text pointer-events-none absolute left-0 top-0 -z-10 whitespace-pre text-[13px] opacity-0"
     >MMMMMMMMMMMMMMMMMMMM</span>
 
+    <!-- `tabindex` na widoku logu: `Ctrl+A`/`Ctrl+C`/`Esc` działają tylko wtedy,
+         gdy fokus jest tutaj (pole wpisywania komend jest poza tym elementem). -->
     <div
       ref="viewport"
       class="log-text absolute inset-0 overflow-auto bg-slate-950 text-[13px] leading-[18px]"
       style="scrollbar-gutter: stable"
+      tabindex="0"
       @scroll="onScroll"
       @wheel="markUserScroll"
       @pointerdown="markUserScroll"
+      @keydown="onKeydown"
+      @contextmenu.prevent="onContextMenu"
     >
       <div
         v-if="total === 0"
@@ -416,8 +645,10 @@ const showJumpButton = computed(() => {
           v-for="row in renderedRows"
           :key="row.seq"
           :data-seq="row.seq"
-          class="whitespace-pre-wrap break-all px-3 hover:bg-slate-900/60"
-          :class="row.isError ? 'bg-red-950/40' : ''"
+          class="whitespace-pre-wrap break-all px-3"
+          :class="rowClass(row)"
+          @mousedown="onRowMouseDown"
+          @click="onRowClick($event, row.seq)"
         >
           <span
             v-for="(segment, index) in row.segments"
@@ -440,6 +671,40 @@ const showJumpButton = computed(() => {
       </template>
     </div>
 
+    <!-- Menu kontekstowe (prawy przycisk myszy w widoku logu). Teksty przechodzą
+         przez i18n, tak jak reszta interfejsu. -->
+    <Transition name="fade">
+      <div
+        v-if="menu"
+        ref="menuElement"
+        class="fixed z-30 min-w-[168px] rounded border border-slate-700 bg-slate-900 py-1 shadow-lg"
+        :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
+        role="menu"
+        @keydown="onKeydown"
+      >
+        <button
+          type="button"
+          role="menuitem"
+          class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-200 transition-colors enabled:hover:bg-slate-800 disabled:cursor-default disabled:text-slate-500"
+          :disabled="selectedCount === 0"
+          @click="copySelected"
+        >
+          <Copy :size="13" />
+          {{ t('log.menu.copy') }}
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-200 transition-colors enabled:hover:bg-slate-800 disabled:cursor-default disabled:text-slate-500"
+          :disabled="total === 0"
+          @click="copyAll"
+        >
+          <ClipboardCopy :size="13" />
+          {{ t('log.menu.copyAll') }}
+        </button>
+      </div>
+    </Transition>
+
     <Transition name="fade">
       <button
         v-if="showJumpButton"
@@ -455,6 +720,14 @@ const showJumpButton = computed(() => {
 </template>
 
 <style scoped>
+/* Zaznaczony wiersz: tło z kryciem jest czytelne na kolorach Minecrafta,
+   a wewnętrzny pasek z lewej nie zmienia szerokości tekstu ani wysokości
+   wiersza (żadnych obramowań ani paddingu), więc wirtualizacja działa jak dotąd. */
+.log-row-selected {
+  background-color: rgb(30 58 138 / 0.6);
+  box-shadow: inset 2px 0 0 0 rgb(96 165 250);
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.15s ease;
