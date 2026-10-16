@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+/*
+ * Log pokazuje surowe wyjście MCC i serwerów, w którym bywają znaki spoza BMP
+ * (emoji, symbole z prywatnych zakresów, np. znaki wyboru realm serwera) oraz
+ * znaki zastępcze U+FFFD z dekodowania niepoprawnych bajtów. Łańcuch fontów
+ * z „Segoe UI Emoji" i symbolami zapewnia, że pokażą się jako glify, a nie
+ * jako puste prostokąty.
+ */
+.log-text {
+  font-family:
+    "Cascadia Mono", Consolas, "Courier New", monospace, "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Sans Symbols 2", "Noto Emoji";
+}

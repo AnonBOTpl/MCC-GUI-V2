@@ -1,0 +1,237 @@
+{
+  "app": {
+    "title": "MCC GUI V2"
+  },
+  "titleBar": {
+    "minimize": "Minimalizuj",
+    "maximize": "Maksymalizuj",
+    "restore": "Przywróć",
+    "close": "Zamknij"
+  },
+  "language": {
+    "label": "Język",
+    "en": "Angielski",
+    "pl": "Polski"
+  },
+  "settings": {
+    "open": "Ustawienia",
+    "title": "Ustawienia",
+    "close": "Zamknij",
+    "mccTitle": "Plik Minecraft Console Client",
+    "mccNotSet": "Nie ustawiono",
+    "mccHint": "Plik MinecraftClient.exe, który aplikacja uruchamia dla każdego konta. Zmiana działa na konta uruchamiane od tej pory.",
+    "browse": "Wybierz",
+    "restoreTabs": "Przywracaj zakładki przy starcie",
+    "restoreTabsHint": "Otwiera zakładki z poprzedniej sesji, każda zatrzymana - nic nie łączy się samo. Gdy wyłączone, aplikacja startuje bez zakładek. Konta wracają do panelu zawsze - ten przełącznik ich nie ukrywa.",
+    "sendDelay": "Odstęp między kontami",
+    "sendDelayHint": "Pauza między kontami przy wysyłce do wszystkich, żeby nie wywołać anty-spamu serwera.",
+    "sendDelayUnit": "ms",
+    "logBuffer": "Liczba linii logu na konto",
+    "logBufferHint": "Jak daleko wstecz można przewinąć log w zakładce. Więcej linii zużywa więcej pamięci.",
+    "logBufferUnit": "linii",
+    "save": "Zapisz",
+    "cancel": "Anuluj"
+  },
+  "accountType": {
+    "microsoft": "Microsoft",
+    "offline": "Offline"
+  },
+  "addAccount": {
+    "title": "Dodaj konto",
+    "typeMicrosoftHint": "Adres e-mail. Logowanie kodem w przeglądarce.",
+    "typeOfflineHint": "Sama ksywka. Działa na serwerach bez premium.",
+    "login": "Login",
+    "loginPlaceholder": "ty{'@'}example.com",
+    "loginPlaceholderOffline": "NazwaGracza",
+    "name": "Nazwa",
+    "nameHint": "opcjonalna - domyślnie login",
+    "namePlaceholder": "Konto główne",
+    "noPassword": "Hasła nie przechowujemy. Po dodaniu wybierz serwer, a MCC pokaże kod do wpisania na microsoft.com/link.",
+    "submit": "Dodaj konto",
+    "cancel": "Anuluj"
+  },
+  "sidebar": {
+    "accounts": "Konta",
+    "activeAccounts": "{count} aktywne połączenie | {count} aktywne połączenia | {count} aktywnych połączeń",
+    "addAccount": "Dodaj konto",
+    "addServer": "Dodaj serwer",
+    "serverPlaceholder": "play.example.com:25565",
+    "connectNow": "Dodaj i połącz",
+    "saveOnly": "Tylko zapisz",
+    "removeServer": "Usuń serwer",
+    "removeAccount": "Usuń konto",
+    "version": "Wersja",
+    "versionAuto": "auto",
+    "setVersion": "Ustaw wersję Minecrafta",
+    "versionHint": "Zostaw puste, żeby MCC wykrył wersję sam. Ustaw, gdy serwer nie odpowiada na ping i MCC pyta o wersję.",
+    "cancel": "Anuluj",
+    "editServer": "Edytuj serwer",
+    "empty": "Brak kont. Użyj „Dodaj konto”."
+  },
+  "tabs": {
+    "close": "Zamknij kartę",
+    "unread": "{count} nowa linia | {count} nowe linie | {count} nowych linii"
+  },
+  "status": {
+    "stopped": "Zatrzymane",
+    "starting": "Uruchamianie",
+    "awaitingLogin": "Czeka na logowanie",
+    "running": "Działa",
+    "stopping": "Zatrzymywanie",
+    "crashed": "Awaria"
+  },
+  "account": {
+    "start": "Uruchom",
+    "disconnect": "Rozłącz",
+    "reconnect": "Połącz ponownie",
+    "autoScroll": "Autoprzewijanie"
+  },
+  "log": {
+    "empty": "Brak wyjścia.",
+    "follow": "Śledzenie"
+  },
+  "loginBanner": {
+    "title": "Zaloguj się do Microsoft",
+    "hint": "Otwórz link i wpisz ten kod. Minecraft Console Client również otwiera przeglądarkę.",
+    "copy": "Kopiuj kod",
+    "copied": "Skopiowano",
+    "open": "Otwórz link",
+    "helpLabel": "Które konto Microsoft zostanie użyte?",
+    "help": "Logowanie użyje konta Microsoft aktywnego w Twojej przeglądarce, a nie loginu wpisanego tutaj. Logujesz się na niewłaściwe konto? Na stronie Microsoft wybierz „Użyj innego konta” albo otwórz link w oknie prywatnym lub innym profilu przeglądarki. MCC pamięta sesję każdego konta, więc logujesz się tylko raz na konto."
+  },
+  "input": {
+    "placeholder": "Wiadomość lub /komenda",
+    "send": "Wyślij",
+    "sendToAll": "Wyślij do wszystkich"
+  },
+  "quickActions": {
+    "title": "Szybkie akcje",
+    "count": "{count} akcja | {count} akcje | {count} akcji",
+    "expand": "Pokaż szybkie akcje",
+    "collapse": "Schowaj szybkie akcje",
+    "edit": "Edytuj",
+    "reload": "Przeładuj",
+    "reloadHint": "Wczytuje plik presets.json z dysku od nowa. Przydaje się po ręcznej edycji pliku.",
+    "addActions": "Dodaj akcje",
+    "empty": "Brak akcji. Dodaj komendy, których używasz najczęściej, a potem klikaj je zamiast wpisywać.",
+    "allOff": "Wszystkie akcje są wyłączone — włącz którąś w edytorze.",
+    "sends": "Wyśle: {text}",
+    "sendsToAll": "Wyśle do wszystkich działających połączeń: {text}",
+    "noticeReloaded": "Przeładowano {count} akcję | Przeładowano {count} akcje | Przeładowano {count} akcji",
+    "noticeNoneRunning": "Nic nie działa — akcja nie została wysłana.",
+    "noticeNoActive": "Najpierw otwórz połączenie — akcja nie została wysłana."
+  },
+  "presets": {
+    "title": "Szybkie akcje",
+    "subtitle": "Zapisywane w presets.json",
+    "close": "Zamknij",
+    "hint": "Kolejność i usunięcia zapiszą się po „Zapisz”.",
+    "invalidHint": "Każda akcja potrzebuje etykiety i tekstu.",
+    "cancel": "Anuluj",
+    "save": "Zapisz",
+    "emptyList": "Brak akcji. Dodaj pierwszą poniżej.",
+    "examples": "Przykłady",
+    "addExample": "Dodaj",
+    "addSection": "Dodaj akcję",
+    "add": "Dodaj",
+    "labelLabel": "Etykieta",
+    "labelPlaceholder": "Etykieta",
+    "textLabel": "Tekst wysyłany do klienta",
+    "textPlaceholder": "Tekst wysyłany do klienta, np. /send /home",
+    "color": "Kolor",
+    "colorNone": "Bez koloru",
+    "colorBlue": "Niebieski",
+    "colorGreen": "Zielony",
+    "colorAmber": "Bursztynowy",
+    "colorRed": "Czerwony",
+    "colorViolet": "Fioletowy",
+    "newColor": "Kolor nowej akcji",
+    "listHint": "Przełącznik włącza i wyłącza akcję (wyłączona znika z paska). Akcje idą do aktywnego połączenia, a gdy checkbox „Wyślij do wszystkich” pod logiem jest zaznaczony — do wszystkich działających.",
+    "toggleOn": "Włącz tę akcję",
+    "toggleOff": "Wyłącz tę akcję",
+    "delete": "Usuń",
+    "dragHandle": "Przeciągnij, żeby zmienić kolejność",
+    "sendTip": "Komendy serwera muszą zaczynać się od /send — MCC traktuje wiodące „/” jako własną komendę wewnętrzną."
+  },
+  "empty": {
+    "title": "Brak otwartego połączenia",
+    "hint": "Użyj przycisku „Dodaj konto” w nagłówku panelu kont, a potem kliknij serwer po lewej."
+  },
+  "errors": {
+    "title": "Błąd",
+    "dismiss": "Ukryj",
+    "mcc": {
+      "executableNotSet": "Ścieżka do Minecraft Console Client nie jest jeszcze ustawiona.",
+      "pathEmpty": "Najpierw wybierz plik Minecraft Console Client.",
+      "pathNotFound": "Ten plik już nie istnieje.",
+      "pathNotFile": "Ta ścieżka nie wskazuje pliku.",
+      "pathNotExe": "Ten plik nie jest plikiem .exe systemu Windows."
+    },
+    "settings": {
+      "languageInvalid": "Ten język nie jest obsługiwany.",
+      "delayOutOfRange": "Odstęp musi być z zakresu 0–{max} ms.",
+      "bufferOutOfRange": "Bufor logu musi mieć od {min} do {max} linii."
+    },
+    "store": {
+      "writeFailed": "Nie udało się zapisać pliku ustawień."
+    },
+    "dialog": {
+      "failed": "Nie udało się otworzyć okna wyboru pliku."
+    },
+    "server": {
+      "invalid": "Ten adres serwera jest nieprawidłowy.",
+      "invalidVersion": "Ta wersja Minecrafta jest nieprawidłowa."
+    },
+    "connection": {
+      "notFound": "Ten serwer nie jest zapisany na tym koncie.",
+      "notRunning": "To połączenie nie jest uruchomione.",
+      "alreadyRunning": "To połączenie już działa."
+    },
+    "account": {
+      "alreadyExists": "Konto o tej nazwie już istnieje.",
+      "invalidId": "Konto nie ma prawidłowego identyfikatora.",
+      "duplicateId": "Dwa konta mają ten sam identyfikator.",
+      "loginRequired": "Konto nie ma loginu.",
+      "tooManyServers": "To konto ma za dużo serwerów.",
+      "notFound": "To konto już nie istnieje.",
+      "notRunning": "To konto nie jest uruchomione.",
+      "dirCreateFailed": "Nie udało się utworzyć katalogu konta.",
+      "settingsWriteFailed": "Nie udało się zapisać pliku ustawień konta."
+    },
+    "process": {
+      "spawnFailed": "Nie udało się uruchomić procesu Minecraft Console Client.",
+      "jobCreateFailed": "Nie udało się przygotować sprzątania procesów.",
+      "jobAssignFailed": "Nie udało się przypisać procesu do sprzątania.",
+      "handleUnavailable": "Nie udało się pobrać uchwytu procesu.",
+      "stdinClosed": "Konto w tej chwili nie przyjmuje danych wejściowych.",
+      "writeFailed": "Nie udało się wysłać danych do konta.",
+      "exitedUnexpectedly": "Proces serwera {server} zakończył się nieoczekiwanie."
+    },
+    "input": {
+      "empty": "Najpierw wpisz wiadomość.",
+      "tooLong": "Wpis jest za długi (limit: {limit} znaków).",
+      "controlChars": "Wpis zawiera niedozwolone znaki."
+    },
+    "presets": {
+      "tooMany": "Za dużo akcji (limit: {limit}).",
+      "invalidId": "Akcja nie ma prawidłowego identyfikatora.",
+      "duplicateId": "Dwie akcje mają ten sam identyfikator.",
+      "labelRequired": "Akcja nie ma etykiety.",
+      "labelTooLong": "Etykieta jest za długa (limit: {limit} znaków).",
+      "labelControlChars": "Etykieta zawiera niedozwolone znaki.",
+      "textRequired": "Akcja nie ma tekstu do wysłania.",
+      "invalidColor": "Ten kolor akcji nie jest obsługiwany.",
+      "readFailed": "Nie udało się odczytać pliku presets.json. Popraw plik i kliknij Przeładuj ponownie."
+    },
+    "url": {
+      "notAllowed": "Tego linku nie można otworzyć.",
+      "openFailed": "Nie udało się otworzyć linku w przeglądarce."
+    },
+    "clipboard": {
+      "writeFailed": "Nie udało się skopiować kodu do schowka."
+    },
+    "app": {
+      "unexpectedError": "Coś poszło nie tak."
+    }
+  }
+}

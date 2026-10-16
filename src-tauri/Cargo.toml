@@ -1,0 +1,48 @@
+[package]
+name = "mcc-gui-v2"
+version = "2.0.0"
+description = "MCC GUI V2"
+authors = ["MCC GUI V2"]
+edition = "2024"
+# Minimum wymuszają pluginy Tauri: clipboard-manager i dialog deklarują 1.90.
+rust-version = "1.90"
+# Aby `cargo run`/`tauri dev` uruchamiał aplikację, a nie binarkę testową `fake_mcc`.
+default-run = "mcc-gui-v2"
+
+[lib]
+name = "mcc_gui_v2_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+# Otwieranie adresu logowania Microsoft (tylko https, walidacja po stronie Rusta).
+tauri-plugin-opener = "2.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros", "rt-multi-thread"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tauri-plugin-clipboard-manager = "2.4"
+tauri-plugin-dialog = "2.8"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

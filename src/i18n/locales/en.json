@@ -1,0 +1,237 @@
+{
+  "app": {
+    "title": "MCC GUI V2"
+  },
+  "titleBar": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "pl": "Polish"
+  },
+  "settings": {
+    "open": "Settings",
+    "title": "Settings",
+    "close": "Close",
+    "mccTitle": "Minecraft Console Client executable",
+    "mccNotSet": "Not set",
+    "mccHint": "The MinecraftClient.exe the app starts for each account. A change applies to accounts started afterwards.",
+    "browse": "Browse",
+    "restoreTabs": "Restore tabs on start",
+    "restoreTabsHint": "Brings back the tabs you had open, each one stopped - nothing connects on its own. When off, the app starts with no tabs. Your accounts always come back to the panel - this switch never hides them.",
+    "sendDelay": "Delay between accounts",
+    "sendDelayHint": "Pause between accounts when sending to all, to avoid server anti-spam.",
+    "sendDelayUnit": "ms",
+    "logBuffer": "Log lines kept per account",
+    "logBufferHint": "How far back you can scroll in a tab. More lines use more memory.",
+    "logBufferUnit": "lines",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "accountType": {
+    "microsoft": "Microsoft",
+    "offline": "Offline"
+  },
+  "addAccount": {
+    "title": "Add account",
+    "typeMicrosoftHint": "E-mail address. Sign in with a code in the browser.",
+    "typeOfflineHint": "Nickname only. Works on servers without premium auth.",
+    "login": "Login",
+    "loginPlaceholder": "you{'@'}example.com",
+    "loginPlaceholderOffline": "PlayerName",
+    "name": "Name",
+    "nameHint": "optional - defaults to the login",
+    "namePlaceholder": "Main account",
+    "noPassword": "No password is stored. After adding, pick a server and MCC shows a code to enter at microsoft.com/link.",
+    "submit": "Add account",
+    "cancel": "Cancel"
+  },
+  "sidebar": {
+    "accounts": "Accounts",
+    "activeAccounts": "{count} active account | {count} active accounts",
+    "addAccount": "Add account",
+    "addServer": "Add server",
+    "serverPlaceholder": "play.example.com:25565",
+    "connectNow": "Add & connect",
+    "saveOnly": "Add only",
+    "removeServer": "Remove server",
+    "removeAccount": "Remove account",
+    "version": "Version",
+    "versionAuto": "auto",
+    "setVersion": "Set Minecraft version",
+    "versionHint": "Leave empty to let MCC detect it. Set it when the server does not answer the status ping and MCC asks for a version.",
+    "cancel": "Cancel",
+    "editServer": "Edit server",
+    "empty": "No accounts yet. Use “Add account”."
+  },
+  "tabs": {
+    "close": "Close tab",
+    "unread": "{count} new line | {count} new lines"
+  },
+  "status": {
+    "stopped": "Stopped",
+    "starting": "Starting",
+    "awaitingLogin": "Waiting for login",
+    "running": "Running",
+    "stopping": "Stopping",
+    "crashed": "Crashed"
+  },
+  "account": {
+    "start": "Start",
+    "disconnect": "Disconnect",
+    "reconnect": "Reconnect",
+    "autoScroll": "Auto-scroll"
+  },
+  "log": {
+    "empty": "No output yet.",
+    "follow": "Following"
+  },
+  "loginBanner": {
+    "title": "Sign in to Microsoft",
+    "hint": "Open the link and enter this code. Minecraft Console Client also opens your browser.",
+    "copy": "Copy code",
+    "copied": "Copied",
+    "open": "Open link",
+    "helpLabel": "Which Microsoft account is used?",
+    "help": "The sign-in uses the Microsoft account that is active in your browser, not the login typed here. Signing in with the wrong account? Choose \"Use another account\" on the Microsoft page, or open the link in a private window or another browser profile. MCC remembers each account's session, so you only sign in once per account."
+  },
+  "input": {
+    "placeholder": "Message or /command",
+    "send": "Send",
+    "sendToAll": "Send to all"
+  },
+  "quickActions": {
+    "title": "Quick actions",
+    "count": "{count} action | {count} actions",
+    "expand": "Show quick actions",
+    "collapse": "Hide quick actions",
+    "edit": "Edit",
+    "reload": "Reload",
+    "reloadHint": "Reads presets.json from disk again. Use it after editing the file by hand.",
+    "addActions": "Add actions",
+    "empty": "No actions yet — add the commands you type most, then click them instead of typing.",
+    "allOff": "Every action is switched off — turn one on in the editor.",
+    "sends": "Sends: {text}",
+    "sendsToAll": "Sends to all running connections: {text}",
+    "noticeReloaded": "Reloaded {count} action | Reloaded {count} actions",
+    "noticeNoneRunning": "Nothing is running — the action was not sent.",
+    "noticeNoActive": "Open a connection first — the action was not sent."
+  },
+  "presets": {
+    "title": "Quick actions",
+    "subtitle": "Saved to presets.json",
+    "close": "Close",
+    "hint": "Reordering and deleting are applied after Save.",
+    "invalidHint": "Every action needs a label and a text.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "emptyList": "No actions yet. Add the first one below.",
+    "examples": "Examples",
+    "addExample": "Add",
+    "addSection": "Add action",
+    "add": "Add",
+    "labelLabel": "Label",
+    "labelPlaceholder": "Label",
+    "textLabel": "Text sent to the client",
+    "textPlaceholder": "Text sent to the client, e.g. /send /home",
+    "color": "Color",
+    "colorNone": "No color",
+    "colorBlue": "Blue",
+    "colorGreen": "Green",
+    "colorAmber": "Amber",
+    "colorRed": "Red",
+    "colorViolet": "Violet",
+    "newColor": "Color for the new action",
+    "listHint": "The switch turns an action on or off (a switch that is off hides the action from the bar). Actions go to the active connection, or to every running one when “Send to all” under the log is ticked.",
+    "toggleOn": "Turn this action on",
+    "toggleOff": "Turn this action off",
+    "delete": "Delete",
+    "dragHandle": "Drag to reorder",
+    "sendTip": "Commands that go to the server must start with /send — MCC treats a leading “/” as its own internal command."
+  },
+  "empty": {
+    "title": "No connection open",
+    "hint": "Use the “Add account” button in the accounts panel header, then click a server on the left."
+  },
+  "errors": {
+    "title": "Error",
+    "dismiss": "Dismiss",
+    "mcc": {
+      "executableNotSet": "The Minecraft Console Client executable is not set yet.",
+      "pathEmpty": "Choose the Minecraft Console Client executable first.",
+      "pathNotFound": "That file does not exist any more.",
+      "pathNotFile": "That path is not a file.",
+      "pathNotExe": "That file is not a Windows .exe."
+    },
+    "settings": {
+      "languageInvalid": "That language is not supported.",
+      "delayOutOfRange": "The delay must be between 0 and {max} ms.",
+      "bufferOutOfRange": "The log buffer must be between {min} and {max} lines."
+    },
+    "store": {
+      "writeFailed": "Could not save the settings file."
+    },
+    "dialog": {
+      "failed": "Could not open the file picker."
+    },
+    "server": {
+      "invalid": "That server address is not valid.",
+      "invalidVersion": "That Minecraft version is not valid."
+    },
+    "connection": {
+      "notFound": "That server is not saved on this account.",
+      "notRunning": "This connection is not running.",
+      "alreadyRunning": "This connection is already running."
+    },
+    "account": {
+      "alreadyExists": "An account with this name already exists.",
+      "invalidId": "An account is missing a valid id.",
+      "duplicateId": "Two accounts share the same id.",
+      "loginRequired": "An account is missing a login.",
+      "tooManyServers": "This account has too many servers.",
+      "notFound": "This account no longer exists.",
+      "notRunning": "This account is not running.",
+      "dirCreateFailed": "Could not create the account folder.",
+      "settingsWriteFailed": "Could not write the account settings file."
+    },
+    "process": {
+      "spawnFailed": "Could not start the Minecraft Console Client process.",
+      "jobCreateFailed": "Could not set up process cleanup.",
+      "jobAssignFailed": "Could not attach the process to the cleanup job.",
+      "handleUnavailable": "Could not get the process handle.",
+      "stdinClosed": "The account is not accepting input right now.",
+      "writeFailed": "Could not send the input to the account.",
+      "exitedUnexpectedly": "The process for {server} exited unexpectedly."
+    },
+    "input": {
+      "empty": "Enter a message first.",
+      "tooLong": "The input is too long (limit: {limit} characters).",
+      "controlChars": "The input contains characters that are not allowed."
+    },
+    "presets": {
+      "tooMany": "Too many actions (limit: {limit}).",
+      "invalidId": "An action is missing a valid id.",
+      "duplicateId": "Two actions share the same id.",
+      "labelRequired": "An action is missing a label.",
+      "labelTooLong": "The label is too long (limit: {limit} characters).",
+      "labelControlChars": "The label contains characters that are not allowed.",
+      "textRequired": "An action is missing the text to send.",
+      "invalidColor": "That action colour is not supported.",
+      "readFailed": "Could not read presets.json. Fix the file and press Reload again."
+    },
+    "url": {
+      "notAllowed": "This link cannot be opened.",
+      "openFailed": "Could not open the link in your browser."
+    },
+    "clipboard": {
+      "writeFailed": "Could not copy the code to the clipboard."
+    },
+    "app": {
+      "unexpectedError": "Something went wrong."
+    }
+  }
+}

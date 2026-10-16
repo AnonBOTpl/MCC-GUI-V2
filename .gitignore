@@ -1,0 +1,35 @@
+# Zależności
+node_modules/
+dist/
+src-tauri/target/
+
+# Tauri
+src-tauri/gen/
+
+# Logi i pliki lokalne
+*.log
+.DS_Store
+
+# Lokalny skrypt uruchomieniowy do testów (ścieżka do MCC u konkretnego użytkownika)
+run-dev.bat
+
+# Katalogi robocze kont MCC (sekrety sesji) — nigdy nie wchodzą do repozytorium
+accounts/
+
+# Materiał referencyjny MCC (read-only, duże binaria) — nie wersjonujemy
+reference/
+
+# Mockupy UI (robocze podglądy do akceptacji, nie są częścią aplikacji)
+docs/mockups/
+
+# Lokalne dokumenty robocze — instrukcje dla agenta, plan, notatki z MCC,
+# dziennik prac i propozycje. Nie są częścią aplikacji i nie idą do repozytorium.
+AGENTS.md
+PLAN.md
+DEVLOG.md
+docs/MCC_NOTES.md
+docs/IDEAS.md
+IDEAS-v2.md
+
+# Katalog roboczy Freebuff (identyfikator projektu, stan narzędzia)
+.freebuff/
