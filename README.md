@@ -26,7 +26,9 @@ shows what it prints.
 
 ## Installing the app
 
-1. Download `MCC GUI V2_2.0.0_x64-setup.exe` from the Releases page of this repository.
+1. Download `MCC.GUI.V2_2.0.0_x64-setup.exe` from the Releases page of this repository (the
+   release shows the build's file name with dots, because GitHub does not accept spaces in
+   uploaded file names).
 2. Run it. Windows will show a **SmartScreen** warning, because the installer is not
    code-signed — choose **More info** → **Run anyway**.
 3. The installer needs **no administrator rights**; it installs into your own user profile.
@@ -36,14 +38,14 @@ project published. Every release therefore lists the **SHA256** of its installer
 release description. Compare it before running the file:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 ".\MCC GUI V2_2.0.0_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 ".\MCC.GUI.V2_2.0.0_x64-setup.exe"
 ```
 
 On a system where that command is unavailable (or in an older shell), `certutil` — which
 ships with Windows — returns the same number:
 
 ```powershell
-certutil -hashfile ".\MCC GUI V2_2.0.0_x64-setup.exe" SHA256
+certutil -hashfile ".\MCC.GUI.V2_2.0.0_x64-setup.exe" SHA256
 ```
 
 If the hash differs from the one in the release description, do not run the installer.

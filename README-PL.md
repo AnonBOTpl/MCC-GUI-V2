@@ -26,7 +26,8 @@ i pokazuje to, co one wypisują.
 
 ## Instalacja
 
-1. Pobierz `MCC GUI V2_2.0.0_x64-setup.exe` ze strony wydań tego repozytorium.
+1. Pobierz `MCC.GUI.V2_2.0.0_x64-setup.exe` ze strony wydań tego repozytorium (w wydaniu
+   nazwa pliku ma kropki zamiast spacji, bo GitHub nie przyjmuje spacji w nazwach plików).
 2. Uruchom plik. Windows pokaże ostrzeżenie **SmartScreen**, bo instalator nie jest podpisany
    certyfikatem — wybierz **Więcej informacji** → **Uruchom mimo to**.
 3. Instalator **nie potrzebuje uprawnień administratora**; instaluje się w Twoim profilu.
@@ -36,14 +37,14 @@ który opublikował projekt. Dlatego przy każdym wydaniu w opisie wydania podan
 instalatora. Porównaj go, zanim uruchomisz plik:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 ".\MCC GUI V2_2.0.0_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 ".\MCC.GUI.V2_2.0.0_x64-setup.exe"
 ```
 
 Jeśli w Twoim systemie tego polecenia nie ma (albo używasz starszej powłoki), ten sam skrót
 policzy `certutil`, który jest w każdym Windowsie:
 
 ```powershell
-certutil -hashfile ".\MCC GUI V2_2.0.0_x64-setup.exe" SHA256
+certutil -hashfile ".\MCC.GUI.V2_2.0.0_x64-setup.exe" SHA256
 ```
 
 Jeśli skrót różni się od tego w opisie wydania, nie uruchamiaj instalatora.
