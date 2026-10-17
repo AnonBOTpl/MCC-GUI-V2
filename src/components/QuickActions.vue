@@ -90,11 +90,15 @@ function pillTitle(preset: Preset): string {
       </span>
     </button>
 
-    <!-- Panel: animowany przez `grid-template-rows`, więc działa przy każdej liczbie linii -->
+    <!-- Panel: animowany przez `grid-template-rows`, więc działa przy każdej liczbie linii.
+         Zwinięty dostaje `inert`, bo sama wysokość 0 nie usuwa go z klawiatury:
+         bez tego `Tab` wchodził w pigułki i `Enter` wysyłał akcję z niewidocznego paska. -->
     <div
       id="quick-actions-panel"
       class="grid overflow-hidden transition-[grid-template-rows] duration-[180ms] ease-out"
       :style="{ gridTemplateRows: open ? '1fr' : '0fr' }"
+      :inert="open ? undefined : true"
+      :aria-hidden="open ? undefined : 'true'"
     >
       <div class="min-h-0">
         <!-- Maksymalnie trzy linie akcji (7+26+6+26+6+26+7 = 104 px); resztę się przewija -->

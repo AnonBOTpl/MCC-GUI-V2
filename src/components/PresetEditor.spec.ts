@@ -70,6 +70,13 @@ describe('PresetEditor', () => {
     return mount(PresetEditor, { props: { open: true }, global: { plugins: [i18n] } })
   }
 
+  it('jest dialogiem (R-06)', () => {
+    const wrapper = setup([])
+
+    expect(wrapper.get('[role="dialog"]').attributes('aria-modal')).toBe('true')
+    expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('Quick actions')
+  })
+
   it('dodaje nową akcję z etykietą i tekstem', async () => {
     const wrapper = setup([])
 

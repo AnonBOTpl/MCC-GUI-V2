@@ -121,6 +121,25 @@ describe('CloseConfirmModal', () => {
     expect(calls).toEqual(['saveSettings', 'closeApp'])
   })
 
+  it('ma semantykę dialogu, a Tab nie wypuszcza fokusu poza modal', async () => {
+    const wrapper = await openModal(2)
+    // Pole wpisywania komend jest poza modalem: bez pułapki fokusu `Tab` do niego
+    // wracał, a `Enter` w tym formularzu wysyłał wiadomość pod nakładką.
+    const inputBar = document.createElement('input')
+    inputBar.type = 'text'
+    document.body.append(inputBar)
+
+    const dialog = wrapper.get('[role="dialog"]')
+    expect(dialog.attributes('aria-modal')).toBe('true')
+    expect(dialog.element.contains(document.activeElement)).toBe(true)
+
+    inputBar.focus()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+
+    expect(document.activeElement).not.toBe(inputBar)
+    expect(dialog.element.contains(document.activeElement)).toBe(true)
+  })
+
   it('nieudane zamknięcie zostawia modal otwarty i pozwala spróbować ponownie', async () => {
     vi.mocked(backend.closeApp).mockRejectedValue({ code: 'app.closeFailed', params: {} })
     const wrapper = await openModal(1)

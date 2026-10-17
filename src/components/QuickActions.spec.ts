@@ -59,6 +59,22 @@ describe('QuickActions', () => {
     expect(handle.attributes('aria-expanded')).toBe('false')
   })
 
+  it('zwinięty panel jest inert, więc Tab nie wchodzi w pigułki', async () => {
+    const wrapper = mountBar([preset('p1', '/send /home')])
+    const handle = wrapper.get('button[aria-controls="quick-actions-panel"]')
+    const panel = wrapper.get('#quick-actions-panel')
+
+    // Sama wysokość 0fr nie usuwa panelu z dostępu klawiatury.
+    expect(panel.attributes('inert')).toBeDefined()
+    expect(panel.attributes('aria-hidden')).toBe('true')
+    expect(panel.find('button[title="Sends: /send /home"]').exists()).toBe(true)
+
+    await handle.trigger('click')
+
+    expect(panel.attributes('inert')).toBeUndefined()
+    expect(panel.attributes('aria-hidden')).toBeUndefined()
+  })
+
   it('limit trzech linii: panel ma własne przewijanie i maksymalną wysokość', () => {
     const wrapper = mountBar([preset('p1', '/send /home')])
     const scroll = wrapper.get('.qa-scroll')

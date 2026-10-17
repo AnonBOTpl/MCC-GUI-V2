@@ -20,11 +20,12 @@
 
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { GripVertical, Trash2, X } from '@lucide/vue'
+import { GripVertical, Trash2 } from '@lucide/vue'
 import type { Preset, PresetColor } from '../api/contract'
 import { PRESET_COLOR_OPTIONS, presetColorClass } from '../presets/palette'
 import { moveItem, newPresetId, rowIndexAt } from '../presets/model'
 import { usePresetsStore } from '../stores/presets'
+import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (event: 'close'): void }>()
@@ -93,13 +94,8 @@ watch(
   { immediate: true },
 )
 
-/** Zamyka modal z klawiatury (Escape), bez zapisywania. */
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && props.open) emit('close')
-}
-window.addEventListener('keydown', onKeydown)
+// `Esc` i pułapkę fokusu obsługuje `BaseModal`.
 onUnmounted(() => {
-  window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('pointercancel', onPointerUp)
@@ -203,253 +199,242 @@ async function confirm(): Promise<void> {
 </script>
 
 <template>
-  <Transition name="modal">
-    <div
-      v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      @click.self="emit('close')"
+  <BaseModal
+    :open="open"
+    :label="t('presets.title')"
+    :close-label="t('presets.close')"
+    width="max-w-2xl"
+    body-class="gap-2 py-3"
+    @close="emit('close')"
+  >
+    <template #header>
+      <h2 class="text-sm font-semibold text-slate-100">
+        {{ t('presets.title') }}
+      </h2>
+      <span class="text-xs text-slate-500">{{ t('presets.subtitle') }}</span>
+    </template>
+
+    <p class="text-[11px] text-slate-500">
+      {{ t('presets.listHint') }}
+    </p>
+
+    <p
+      v-if="draft.length === 0"
+      class="text-xs text-slate-400"
     >
-      <div class="flex max-h-full w-full max-w-2xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
-        <header class="flex shrink-0 items-center gap-3 border-b border-slate-800 px-4 py-3">
-          <h2 class="text-sm font-semibold text-slate-100">
-            {{ t('presets.title') }}
-          </h2>
-          <span class="text-xs text-slate-500">{{ t('presets.subtitle') }}</span>
-          <button
-            type="button"
-            class="ml-auto flex h-7 w-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-100"
-            :title="t('presets.close')"
-            @click="emit('close')"
-          >
-            <X :size="16" />
-          </button>
-        </header>
+      {{ t('presets.emptyList') }}
+    </p>
 
-        <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-3">
-          <p class="text-[11px] text-slate-500">
-            {{ t('presets.listHint') }}
+    <!-- Przykłady na start: żeby nie trzeba było zgadywać składni `/send` -->
+    <div
+      v-if="draft.length === 0"
+      class="flex flex-col gap-1.5"
+    >
+      <span class="text-[11px] uppercase tracking-wide text-slate-500">
+        {{ t('presets.examples') }}
+      </span>
+      <div
+        v-for="example in EXAMPLES"
+        :key="example.text"
+        class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-1.5"
+      >
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-xs text-slate-200">
+            {{ example.label }}
           </p>
-
-          <p
-            v-if="draft.length === 0"
-            class="text-xs text-slate-400"
-          >
-            {{ t('presets.emptyList') }}
+          <p class="truncate font-mono text-[11px] text-slate-500">
+            {{ example.text }}
           </p>
-
-          <!-- Przykłady na start: żeby nie trzeba było zgadywać składni `/send` -->
-          <div
-            v-if="draft.length === 0"
-            class="flex flex-col gap-1.5"
-          >
-            <span class="text-[11px] uppercase tracking-wide text-slate-500">
-              {{ t('presets.examples') }}
-            </span>
-            <div
-              v-for="example in EXAMPLES"
-              :key="example.text"
-              class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-1.5"
-            >
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-xs text-slate-200">
-                  {{ example.label }}
-                </p>
-                <p class="truncate font-mono text-[11px] text-slate-500">
-                  {{ example.text }}
-                </p>
-              </div>
-              <button
-                type="button"
-                class="h-[26px] shrink-0 rounded border border-slate-700 px-2.5 text-xs text-slate-200 transition-colors hover:bg-slate-800"
-                @click="addExample(example)"
-              >
-                {{ t('presets.addExample') }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Lista akcji -->
-          <div
-            ref="rowList"
-            class="flex flex-col gap-2"
-          >
-            <div
-              v-for="(row, index) in draft"
-              :key="row.id"
-              data-preset-row
-              class="flex items-center gap-2 rounded-lg border bg-slate-950/60 px-2 py-1.5"
-              :class="draggingIndex === index ? 'border-dashed border-blue-500 opacity-60' : 'border-slate-800'"
-            >
-              <span
-                data-preset-grip
-                class="shrink-0 cursor-grab touch-none select-none text-slate-500"
-                :title="t('presets.dragHandle')"
-                @pointerdown="onPointerDown($event, index)"
-              >
-                <GripVertical :size="14" />
-              </span>
-
-              <!-- Przełącznik włącza i wyłącza **akcję** (wyłączona znika z paska) -->
-              <button
-                type="button"
-                role="switch"
-                data-preset-toggle
-                :aria-checked="row.enabled"
-                :aria-label="toggleLabel(row)"
-                :title="toggleLabel(row)"
-                class="relative h-5 w-9 shrink-0 rounded-full transition-colors"
-                :class="row.enabled ? 'bg-blue-600' : 'bg-slate-700'"
-                @click="row.enabled = !row.enabled"
-              >
-                <span
-                  class="absolute top-[2px] h-4 w-4 rounded-full bg-white transition-all"
-                  :class="row.enabled ? 'left-[18px]' : 'left-[2px]'"
-                />
-              </button>
-
-              <span
-                class="h-[26px] w-[10px] shrink-0 rounded"
-                :class="row.color ? presetColorClass(row.color) : 'swatch-none'"
-              />
-
-              <select
-                v-model="row.color"
-                class="h-[26px] w-[86px] shrink-0 rounded border border-slate-700 bg-slate-900 px-1.5 text-[11px] text-slate-200 outline-none focus:border-blue-500"
-                :title="t('presets.color')"
-              >
-                <option :value="null">
-                  {{ t('presets.colorNone') }}
-                </option>
-                <option
-                  v-for="color in PRESET_COLOR_OPTIONS"
-                  :key="color"
-                  :value="color"
-                >
-                  {{ t(COLOR_KEYS[color]) }}
-                </option>
-              </select>
-
-              <!-- Zgaszone pola pokazują, że akcja jest wyłączona -->
-              <div
-                class="flex min-w-0 flex-1 flex-col gap-1 transition-opacity"
-                :class="row.enabled ? '' : 'opacity-50'"
-              >
-                <input
-                  v-model="row.label"
-                  type="text"
-                  maxlength="40"
-                  class="h-[26px] rounded border border-slate-800 bg-slate-950 px-2 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500"
-                  :placeholder="t('presets.labelPlaceholder')"
-                  :aria-label="t('presets.labelLabel')"
-                >
-                <input
-                  v-model="row.text"
-                  type="text"
-                  maxlength="512"
-                  spellcheck="false"
-                  class="h-[26px] rounded border border-slate-800 bg-slate-950 px-2 font-mono text-[11px] text-slate-300 outline-none placeholder:text-slate-600 focus:border-blue-500"
-                  :placeholder="t('presets.textPlaceholder')"
-                  :aria-label="t('presets.textLabel')"
-                >
-              </div>
-
-              <button
-                type="button"
-                class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-800 hover:text-red-400"
-                :title="t('presets.delete')"
-                @click="removeAt(index)"
-              >
-                <Trash2 :size="13" />
-              </button>
-            </div>
-          </div>
-
-          <!-- Dodawanie nowej akcji -->
-          <div class="mt-1 flex flex-col gap-1.5 border-t border-slate-800 pt-3">
-            <span class="text-[11px] uppercase tracking-wide text-slate-500">
-              {{ t('presets.addSection') }}
-            </span>
-            <div class="flex items-center gap-2">
-              <input
-                v-model="newLabel"
-                type="text"
-                maxlength="40"
-                class="h-8 w-32 shrink-0 rounded border border-slate-700 bg-slate-950 px-2 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500"
-                :placeholder="t('presets.labelPlaceholder')"
-                :aria-label="t('presets.labelLabel')"
-              >
-              <input
-                v-model="newText"
-                type="text"
-                maxlength="512"
-                spellcheck="false"
-                class="h-8 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 font-mono text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500"
-                :placeholder="t('presets.textPlaceholder')"
-                :aria-label="t('presets.textLabel')"
-              >
-              <button
-                type="button"
-                class="h-8 shrink-0 rounded bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                :disabled="!canAdd"
-                @click="addNew"
-              >
-                {{ t('presets.add') }}
-              </button>
-            </div>
-
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-slate-400">{{ t('presets.newColor') }}</span>
-              <button
-                type="button"
-                class="swatch-none h-5 w-5 rounded border transition-colors"
-                :class="newColor === null ? 'border-blue-500' : 'border-slate-700'"
-                :title="t('presets.colorNone')"
-                @click="newColor = null"
-              />
-              <button
-                v-for="color in PRESET_COLOR_OPTIONS"
-                :key="color"
-                type="button"
-                class="h-5 w-5 rounded border transition-colors"
-                :class="[presetColorClass(color), newColor === color ? 'border-blue-400' : 'border-slate-700']"
-                :title="t(COLOR_KEYS[color])"
-                @click="newColor = color"
-              />
-            </div>
-
-            <p class="text-[11px] text-slate-500">
-              {{ t('presets.sendTip') }}
-            </p>
-          </div>
         </div>
-
-        <footer class="flex shrink-0 items-center gap-2 border-t border-slate-800 px-4 py-3">
-          <span
-            class="mr-auto text-xs"
-            :class="canSave ? 'text-slate-500' : 'text-amber-300'"
-          >
-            {{ canSave ? t('presets.hint') : t('presets.invalidHint') }}
-          </span>
-          <button
-            type="button"
-            class="h-8 rounded border border-slate-700 px-3 text-xs text-slate-200 transition-colors hover:bg-slate-800 disabled:opacity-60"
-            :disabled="saving"
-            @click="emit('close')"
-          >
-            {{ t('presets.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="!canSave"
-            @click="confirm"
-          >
-            {{ t('presets.save') }}
-          </button>
-        </footer>
+        <button
+          type="button"
+          class="h-[26px] shrink-0 rounded border border-slate-700 px-2.5 text-xs text-slate-200 transition-colors hover:bg-slate-800"
+          @click="addExample(example)"
+        >
+          {{ t('presets.addExample') }}
+        </button>
       </div>
     </div>
-  </Transition>
+
+    <!-- Lista akcji -->
+    <div
+      ref="rowList"
+      class="flex flex-col gap-2"
+    >
+      <div
+        v-for="(row, index) in draft"
+        :key="row.id"
+        data-preset-row
+        class="flex items-center gap-2 rounded-lg border bg-slate-950/60 px-2 py-1.5"
+        :class="draggingIndex === index ? 'border-dashed border-blue-500 opacity-60' : 'border-slate-800'"
+      >
+        <span
+          data-preset-grip
+          class="shrink-0 cursor-grab touch-none select-none text-slate-500"
+          :title="t('presets.dragHandle')"
+          @pointerdown="onPointerDown($event, index)"
+        >
+          <GripVertical :size="14" />
+        </span>
+
+        <!-- Przełącznik włącza i wyłącza **akcję** (wyłączona znika z paska) -->
+        <button
+          type="button"
+          role="switch"
+          data-preset-toggle
+          :aria-checked="row.enabled"
+          :aria-label="toggleLabel(row)"
+          :title="toggleLabel(row)"
+          class="relative h-5 w-9 shrink-0 rounded-full transition-colors"
+          :class="row.enabled ? 'bg-blue-600' : 'bg-slate-700'"
+          @click="row.enabled = !row.enabled"
+        >
+          <span
+            class="absolute top-[2px] h-4 w-4 rounded-full bg-white transition-all"
+            :class="row.enabled ? 'left-[18px]' : 'left-[2px]'"
+          />
+        </button>
+
+        <span
+          class="h-[26px] w-[10px] shrink-0 rounded"
+          :class="row.color ? presetColorClass(row.color) : 'swatch-none'"
+        />
+
+        <select
+          v-model="row.color"
+          class="h-[26px] w-[86px] shrink-0 rounded border border-slate-700 bg-slate-900 px-1.5 text-[11px] text-slate-200 outline-none focus:border-blue-500"
+          :title="t('presets.color')"
+        >
+          <option :value="null">
+            {{ t('presets.colorNone') }}
+          </option>
+          <option
+            v-for="color in PRESET_COLOR_OPTIONS"
+            :key="color"
+            :value="color"
+          >
+            {{ t(COLOR_KEYS[color]) }}
+          </option>
+        </select>
+
+        <!-- Zgaszone pola pokazują, że akcja jest wyłączona -->
+        <div
+          class="flex min-w-0 flex-1 flex-col gap-1 transition-opacity"
+          :class="row.enabled ? '' : 'opacity-50'"
+        >
+          <input
+            v-model="row.label"
+            type="text"
+            maxlength="40"
+            class="h-[26px] rounded border border-slate-800 bg-slate-950 px-2 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500"
+            :placeholder="t('presets.labelPlaceholder')"
+            :aria-label="t('presets.labelLabel')"
+          >
+          <input
+            v-model="row.text"
+            type="text"
+            maxlength="512"
+            spellcheck="false"
+            class="h-[26px] rounded border border-slate-800 bg-slate-950 px-2 font-mono text-[11px] text-slate-300 outline-none placeholder:text-slate-600 focus:border-blue-500"
+            :placeholder="t('presets.textPlaceholder')"
+            :aria-label="t('presets.textLabel')"
+          >
+        </div>
+
+        <button
+          type="button"
+          class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-800 hover:text-red-400"
+          :title="t('presets.delete')"
+          @click="removeAt(index)"
+        >
+          <Trash2 :size="13" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Dodawanie nowej akcji -->
+    <div class="mt-1 flex flex-col gap-1.5 border-t border-slate-800 pt-3">
+      <span class="text-[11px] uppercase tracking-wide text-slate-500">
+        {{ t('presets.addSection') }}
+      </span>
+      <div class="flex items-center gap-2">
+        <input
+          v-model="newLabel"
+          type="text"
+          maxlength="40"
+          class="h-8 w-32 shrink-0 rounded border border-slate-700 bg-slate-950 px-2 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500"
+          :placeholder="t('presets.labelPlaceholder')"
+          :aria-label="t('presets.labelLabel')"
+        >
+        <input
+          v-model="newText"
+          type="text"
+          maxlength="512"
+          spellcheck="false"
+          class="h-8 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 font-mono text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500"
+          :placeholder="t('presets.textPlaceholder')"
+          :aria-label="t('presets.textLabel')"
+        >
+        <button
+          type="button"
+          class="h-8 shrink-0 rounded bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+          :disabled="!canAdd"
+          @click="addNew"
+        >
+          {{ t('presets.add') }}
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-slate-400">{{ t('presets.newColor') }}</span>
+        <button
+          type="button"
+          class="swatch-none h-5 w-5 rounded border transition-colors"
+          :class="newColor === null ? 'border-blue-500' : 'border-slate-700'"
+          :title="t('presets.colorNone')"
+          @click="newColor = null"
+        />
+        <button
+          v-for="color in PRESET_COLOR_OPTIONS"
+          :key="color"
+          type="button"
+          class="h-5 w-5 rounded border transition-colors"
+          :class="[presetColorClass(color), newColor === color ? 'border-blue-400' : 'border-slate-700']"
+          :title="t(COLOR_KEYS[color])"
+          @click="newColor = color"
+        />
+      </div>
+
+      <p class="text-[11px] text-slate-500">
+        {{ t('presets.sendTip') }}
+      </p>
+    </div>
+
+    <template #footer>
+      <span
+        class="mr-auto text-xs"
+        :class="canSave ? 'text-slate-500' : 'text-amber-300'"
+      >
+        {{ canSave ? t('presets.hint') : t('presets.invalidHint') }}
+      </span>
+      <button
+        type="button"
+        class="h-8 rounded border border-slate-700 px-3 text-xs text-slate-200 transition-colors hover:bg-slate-800 disabled:opacity-60"
+        :disabled="saving"
+        @click="emit('close')"
+      >
+        {{ t('presets.cancel') }}
+      </button>
+      <button
+        type="button"
+        class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        :disabled="!canSave"
+        @click="confirm"
+      >
+        {{ t('presets.save') }}
+      </button>
+    </template>
+  </BaseModal>
 </template>
 
 <style scoped>
@@ -457,14 +442,5 @@ async function confirm(): Promise<void> {
    kwadratu (mockup Etapu 6). */
 .swatch-none {
   background: repeating-linear-gradient(45deg, #1e293b 0 4px, #0c1424 4px 8px);
-}
-
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.15s ease;
-}
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
 }
 </style>

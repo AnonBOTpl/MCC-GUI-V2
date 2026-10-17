@@ -53,6 +53,15 @@ describe('AddAccountModal', () => {
     expect(wrapper.find('form').exists()).toBe(false)
   })
 
+  it('jest dialogiem z nazwą, ale fokus zostaje w polu loginu (R-06)', async () => {
+    const wrapper = await openModal()
+
+    const dialog = wrapper.get('[role="dialog"]')
+    expect(dialog.attributes('aria-modal')).toBe('true')
+    expect(dialog.attributes('aria-label')).toBe('Add account')
+    expect(document.activeElement).toBe(loginField(wrapper).element)
+  })
+
   it('po otwarciu ustawia fokus na loginie i blokuje zapis do czasu wpisania loginu', async () => {
     const wrapper = await openModal()
 
