@@ -313,7 +313,7 @@ async function confirm(): Promise<void> {
 
         <select
           v-model="row.color"
-          class="h-[26px] w-[86px] shrink-0 rounded border border-slate-700 bg-slate-900 px-1.5 text-[11px] text-slate-200 outline-none focus:border-blue-500"
+          class="h-[26px] w-auto min-w-[86px] max-w-[160px] shrink-0 rounded border border-slate-700 bg-slate-900 px-1.5 text-[11px] text-slate-200 outline-none focus:border-blue-500"
           :title="t('presets.color')"
         >
           <option :value="null">

@@ -47,6 +47,8 @@ typing could send an action that was not visible on screen.
 - **A save interrupted by a crash or a power cut no longer leaves an empty settings file.** Data
   is flushed to disk before the file is swapped in, and two saves of the same file can no longer
   trip over each other's temporary copy.
+- **The colour menu in the quick-action editor fits its text.** In Polish the longest name was cut
+  short; the menu is now as wide as the longest entry, so the whole word is readable.
 - **A closed tab no longer leaves its line selection behind.**
 - **A message you typed is no longer lost when nobody could receive it.** With no open
   connection, or with “Send to all” on and nothing running, the text stays in the field and a
