@@ -19,10 +19,12 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::json;
+use tokio::io::AsyncWriteExt;
 
 use crate::account::Account;
 use crate::error::AppError;
@@ -68,6 +70,15 @@ pub struct Store {
     issues: Mutex<HashMap<String, FileIssue>>,
     /// Ostrzeżenia do pokazania w UI - opróżniane przy pierwszej komendzie.
     warnings: Mutex<Vec<StoreWarning>>,
+    /// Numer porządkowy każdego zapisu - trafia do nazwy pliku tymczasowego, żeby
+    /// dwa zapisy nigdy nie pisały do tej samej nazwy (R-35). Licznik, a nie
+    /// losowość, bo wtedy zachowanie jest powtarzalne w testach.
+    temp_seq: AtomicU64,
+    /// Blokada zapisu **per plik** (R-35): dwa zapisy tego samego pliku idą
+    /// jeden po drugim, a różnych plików dalej równolegle. Zewnętrzny
+    /// `std::sync::Mutex` trzymamy tylko na czas wyszukania wpisu (bez `await`),
+    /// właściwa blokada jest asynchroniczna.
+    locks: Mutex<HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>,
 }
 
 impl Store {
@@ -76,7 +87,21 @@ impl Store {
             root,
             issues: Mutex::new(HashMap::new()),
             warnings: Mutex::new(Vec::new()),
+            temp_seq: AtomicU64::new(0),
+            locks: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Blokada zapisu danego pliku, tworzona przy pierwszym użyciu.
+    fn file_lock(&self, file: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+        let mut locks = self
+            .locks
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        locks
+            .entry(file.to_string())
+            .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
     }
 
     /// Katalog danych aplikacji (tu też żyją katalogi kont).
@@ -281,6 +306,12 @@ impl Store {
     /// Zapis do pliku, którego nie udało się wczytać, jest **wstrzymany** (R-10):
     /// inaczej pierwszy zapis zastąpiłby dane użytkownika wartościami domyślnymi.
     async fn write_json<T: Serialize>(&self, file: &str, value: &T) -> Result<(), AppError> {
+        // Zapis tego samego pliku czeka na poprzedni (R-35). Sprawdzenie blokady
+        // (R-10) musi być **w środku**, żeby równoległy zapis, który ją zdejmie
+        // udanym zapisem, nie został wyprzedzony przez własny odczyt stanu.
+        let lock = self.file_lock(file);
+        let _guard = lock.lock().await;
+
         if self.write_blocked(file) {
             tracing::warn!(file, "zapis wstrzymany: plik nie wczytał się poprawnie");
             return Err(AppError::with_params(
@@ -295,9 +326,14 @@ impl Store {
             AppError::new("store.writeFailed")
         })?;
 
-        let temp = path.with_extension("json.tmp");
-        if let Err(error) = tokio::fs::write(&temp, json.as_bytes()).await {
+        // Stała nazwa (`settings.json.tmp`) należała do wszystkich zapisów naraz,
+        // więc drugi zapis mógł nadpisać plik, który pierwszy właśnie podmieniał.
+        let seq = self.temp_seq.fetch_add(1, Ordering::Relaxed);
+        let temp = self.root.join(format!("{file}.{seq}.tmp"));
+        if let Err(error) = write_and_flush(&temp, json.as_bytes()).await {
             tracing::error!(%error, file = %temp.display(), "nie udało się zapisać pliku tymczasowego");
+            // Nieudany zapis nie może zostawić śmieci obok plików danych.
+            let _ = tokio::fs::remove_file(&temp).await;
             return Err(AppError::new("store.writeFailed"));
         }
         if let Err(error) = tokio::fs::rename(&temp, &path).await {
@@ -418,6 +454,22 @@ impl Store {
     }
 }
 
+/// Zapisuje treść do pliku tymczasowego i **czeka, aż dane będą na dysku** (R-34).
+///
+/// Sama atomowa podmiana (`rename`) nie wystarczy: bez `sync_all` po utracie
+/// zasilania na dysku mógłby znaleźć się plik pusty albo ucięty, mimo że podmiana
+/// wyglądała na udaną. `write_all` zamiast `fs::write` daje też pełną kontrolę
+/// nad uchwytem, który musi zostać domknięty przed `rename` (Windows nie pozwala
+/// podmienić pliku, który ktoś jeszcze trzyma otwarty).
+async fn write_and_flush(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut handle = tokio::fs::File::create(path).await?;
+    handle.write_all(bytes).await?;
+    handle.sync_all().await?;
+    // Uchwyt domyka się tutaj, przed `rename` w miejscu wywołania.
+    drop(handle);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -508,6 +560,82 @@ mod tests {
         // Brak pliku to brak zakładek, nie błąd.
         let empty = Store::new(temp_root("session-missing"));
         assert!(empty.load_session().await.is_empty());
+    }
+
+    /// Pliki tymczasowe w katalogu danych (po udanym zapisie ma ich nie być).
+    fn temporary_files(root: &Path) -> Vec<String> {
+        std::fs::read_dir(root)
+            .expect("odczyt katalogu")
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".tmp"))
+            .collect()
+    }
+
+    /// R-35: sto równoległych zapisów tego samego pliku. Przy stałej nazwie
+    /// `*.json.tmp` i bez blokady per plik zapisy nadpisywały sobie plik
+    /// tymczasowy: część kończyła się błędem podmiany, a plik mógł zostać ucięty.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_writes_of_one_file_do_not_collide() {
+        let root = temp_root("concurrent");
+        let store = std::sync::Arc::new(Store::new(root.clone()));
+
+        let mut tasks = Vec::new();
+        for index in 0..100u64 {
+            let store = std::sync::Arc::clone(&store);
+            tasks.push(tokio::spawn(async move {
+                let settings = AppSettings {
+                    send_all_delay_ms: index,
+                    ..Default::default()
+                };
+                store.save_settings(&settings).await.map(|()| index)
+            }));
+        }
+
+        let mut written = Vec::new();
+        for task in tasks {
+            written.push(
+                task.await
+                    .expect("zadanie zapisu")
+                    .expect("każdy równoległy zapis ma się udać"),
+            );
+        }
+        assert_eq!(written.len(), 100);
+
+        // Plik jest kompletny (poprawny JSON) i zgodny z jednym z zapisów,
+        // a po plikach tymczasowych nie ma śladu.
+        let raw = std::fs::read_to_string(root.join(SETTINGS_FILE)).expect("plik ustawień");
+        let saved: AppSettings =
+            serde_json::from_str(&raw).expect("poprawny JSON po równoległych zapisach");
+        assert!(
+            written.contains(&saved.send_all_delay_ms),
+            "na dysku ma być jeden z zapisanych stanów, a nie mieszanka"
+        );
+        assert!(
+            temporary_files(&root).is_empty(),
+            "zostały pliki tymczasowe: {:?}",
+            temporary_files(&root)
+        );
+    }
+
+    /// R-34: treść idzie przez `write_all` + `sync_all`, więc plik ma dokładnie
+    /// tyle bajtów, ile podano (krótsza treść nie zostawia ogona poprzedniej),
+    /// a uchwyt jest domknięty przed podmianą - inaczej Windows nie pozwoliłby
+    /// przemianować otwartego pliku.
+    #[tokio::test]
+    async fn write_and_flush_leaves_exact_content_and_closes_the_handle() {
+        let root = temp_root("flush");
+        let temp = root.join("settings.json.0.tmp");
+
+        write_and_flush(&temp, b"pierwsza, dluzsza tresc")
+            .await
+            .expect("pierwszy zapis");
+        write_and_flush(&temp, b"krotka")
+            .await
+            .expect("drugi zapis");
+
+        assert_eq!(std::fs::read(&temp).expect("odczyt"), b"krotka");
+        std::fs::rename(&temp, root.join(SETTINGS_FILE)).expect("rename po zapisie");
     }
 
     #[tokio::test]

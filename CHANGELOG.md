@@ -44,6 +44,9 @@ several defects. All of them are fixed below.
 typing could send an action that was not visible on screen.
 - **Chat-log cleanup no longer follows links.** A junction (link) inside the log folder can no
   longer make the app delete old `YYYY-MM-DD.log` files outside that folder.
+- **A save interrupted by a crash or a power cut no longer leaves an empty settings file.** Data
+  is flushed to disk before the file is swapped in, and two saves of the same file can no longer
+  trip over each other's temporary copy.
 - **A closed tab no longer leaves its line selection behind.**
 - **A message you typed is no longer lost when nobody could receive it.** With no open
   connection, or with “Send to all” on and nothing running, the text stays in the field and a
