@@ -227,14 +227,19 @@ export const useAccountsStore = defineStore('accounts', () => {
    * Wczytuje zapisane konta przy starcie. Konta wracają **zawsze** - przełącznik
    * „Przywracaj zakładki przy starcie” decyduje tylko o zakładkach
    * (`restoreOpenTabs`), nigdy o panelu kont. Połączeń **nie otwieramy**.
+   *
+   * Pliku **nie nadpisujemy**: `accounts.json` jest źródłem tej listy, a zapis
+   * odrzuca całą listę, gdy choć jeden wpis jest niepoprawny. Panel zostałby
+   * wtedy pusty, a pierwszy `persist` zastąpiłby plik samą nową zmianą (R-01).
+   * Rust dostaje listę tylko po to, żeby utworzyć katalogi kont.
    */
   async function restoreAccounts(): Promise<void> {
     try {
       const saved = await backend.listAccounts()
       if (saved.length === 0) return
-      // Rust rejestruje konta (tworzy ich katalogi) bez uruchamiania procesów.
-      await backend.saveAccounts(saved)
       accounts.value = [...saved].sort((a, b) => a.tabOrder - b.tabOrder)
+      // Rejestracja nie uruchamia procesów i nie dotyka pliku.
+      await backend.registerAccounts(saved)
     } catch (error) {
       pushError(error as ErrorPayload)
     }

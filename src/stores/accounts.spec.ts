@@ -8,6 +8,7 @@ import { useAccountsStore } from './accounts'
 vi.mock('../api/backend', () => ({
   backend: {
     listAccounts: vi.fn(),
+    registerAccounts: vi.fn(),
     saveAccounts: vi.fn(),
     addAccount: vi.fn(),
     removeAccount: vi.fn(),
@@ -53,6 +54,7 @@ describe('store kont - sesja zakładek', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.mocked(backend.listAccounts).mockResolvedValue(SAVED_ACCOUNTS)
+    vi.mocked(backend.registerAccounts).mockResolvedValue(undefined)
     vi.mocked(backend.saveAccounts).mockResolvedValue(undefined)
     vi.mocked(backend.addAccount).mockResolvedValue(undefined)
     vi.mocked(backend.removeAccount).mockResolvedValue(undefined)
@@ -142,6 +144,7 @@ describe('store kont - przełącznik dotyczy zakładek, nie kont', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.mocked(backend.listAccounts).mockResolvedValue(SAVED_ACCOUNTS)
+    vi.mocked(backend.registerAccounts).mockResolvedValue(undefined)
     vi.mocked(backend.saveAccounts).mockResolvedValue(undefined)
     vi.mocked(backend.addAccount).mockResolvedValue(undefined)
     vi.mocked(backend.removeAccount).mockResolvedValue(undefined)
@@ -187,11 +190,29 @@ describe('store kont - przełącznik dotyczy zakładek, nie kont', () => {
     expect(lastSaved().map((item) => item.id)).toEqual(['acc-2'])
   })
 
-  it('wczytane konta idą do pliku bez zmian', async () => {
+  it('wczytane konta są rejestrowane, ale plik nie jest nadpisywany', async () => {
     const accounts = useAccountsStore()
     await accounts.restoreAccounts()
 
-    expect(backend.saveAccounts).toHaveBeenCalledWith(SAVED_ACCOUNTS)
+    expect(backend.registerAccounts).toHaveBeenCalledWith(SAVED_ACCOUNTS)
+    expect(backend.saveAccounts).not.toHaveBeenCalled()
+    expect(accounts.accounts.map((item) => item.id)).toEqual(['acc-1', 'acc-2'])
+  })
+
+  /**
+   * R-01: zapis odrzuca całą listę, gdy choć jeden wpis jest niepoprawny.
+   * Wcześniej start wołał `save_accounts`, więc taki plik zostawiał **pusty
+   * panel**, a pierwszy `persist` nadpisywał `accounts.json` bez starych kont.
+   */
+  it('niepoprawny wpis nie czyści panelu ani pliku', async () => {
+    const broken: Account = { ...account('bad/id', []), login: 'a\nb' }
+    vi.mocked(backend.listAccounts).mockResolvedValue([...SAVED_ACCOUNTS, broken])
+
+    const accounts = useAccountsStore()
+    await accounts.restoreAccounts()
+
+    expect(accounts.accounts.map((item) => item.id)).toEqual(['acc-1', 'acc-2', 'bad/id'])
+    expect(backend.saveAccounts).not.toHaveBeenCalled()
   })
 })
 
@@ -199,6 +220,7 @@ describe('store kont - autoprzewijanie per zakładka', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.mocked(backend.listAccounts).mockResolvedValue(SAVED_ACCOUNTS)
+    vi.mocked(backend.registerAccounts).mockResolvedValue(undefined)
     vi.mocked(backend.saveAccounts).mockResolvedValue(undefined)
     vi.mocked(backend.getOpenTabs).mockResolvedValue(SAVED_TABS)
     vi.mocked(backend.startConnection).mockResolvedValue(undefined)

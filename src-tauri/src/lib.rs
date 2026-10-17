@@ -239,6 +239,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::add_account,
             commands::list_accounts,
+            commands::register_accounts,
             commands::save_accounts,
             commands::remove_account,
             commands::add_server,

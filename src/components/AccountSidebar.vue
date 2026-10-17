@@ -16,6 +16,7 @@ import { connectionId, type ServerEntry } from '../api/contract'
 import { isConnectionLive, statusDotClass, statusKey } from '../log/status'
 import { useAccountsStore } from '../stores/accounts'
 import { useSettingsStore } from '../stores/settings'
+import { isSingleClick } from '../ui/click'
 
 const emit = defineEmits<{ (event: 'addAccount'): void }>()
 
@@ -40,6 +41,19 @@ function editVersion(accountId: string, entry: ServerEntry): void {
   addingFor.value = accountId
   draftServer.value = entry.address
   draftVersion.value = entry.version ?? ''
+}
+
+// Przycisk przy serwerze zmienia się po pierwszym kliknięciu (Start → Rozłącz),
+// więc drugi klik dwukliku musi zostać zignorowany - inaczej użytkownik, który
+// chciał tylko uruchomić połączenie, od razu je zamyka.
+function startFromSidebar(event: MouseEvent, accountId: string, server: string): void {
+  if (!isSingleClick(event)) return
+  void accounts.openConnection(accountId, server)
+}
+
+function stopFromSidebar(event: MouseEvent, id: string): void {
+  if (!isSingleClick(event)) return
+  void accounts.disconnectConnection(id)
 }
 
 /** Dodaje lub aktualizuje serwer; `connect` decyduje, czy startujemy proces. */
@@ -155,7 +169,7 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
           type="button"
           class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-green-400 transition-colors hover:bg-green-600/20 hover:text-green-300"
           :title="t('account.start')"
-          @click="accounts.openConnection(account.id, entry.address)"
+          @click="startFromSidebar($event, account.id, entry.address)"
         >
           <Play :size="13" />
         </button>
@@ -166,7 +180,7 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
           class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
           :title="t('account.disconnect')"
           :disabled="accounts.statusOf(connectionId(account.id, entry.address)) === 'stopping'"
-          @click="accounts.disconnectConnection(connectionId(account.id, entry.address))"
+          @click="stopFromSidebar($event, connectionId(account.id, entry.address))"
         >
           <Square
             :size="11"

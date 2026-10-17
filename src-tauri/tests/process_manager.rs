@@ -320,6 +320,126 @@ async fn send_input_is_echoed() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// R-03: dwa równoległe starty tego samego połączenia nie mogą uruchomić dwóch
+/// procesów ani wyglądać w UI jak awaria.
+#[tokio::test]
+async fn double_start_spawns_one_process() {
+    let (collector, dir, manager) = started_manager().await;
+    manager
+        .add_account(account("a", &[SERVER]))
+        .await
+        .expect("dodanie konta");
+
+    let (first, second) = tokio::join!(
+        manager.start_connection("a", SERVER),
+        manager.start_connection("a", SERVER),
+    );
+
+    let successes = usize::from(first.is_ok()) + usize::from(second.is_ok());
+    assert_eq!(successes, 1, "dokładnie jeden start może się udać");
+    let rejected = first
+        .err()
+        .or_else(|| second.err())
+        .expect("drugi start musi zostać odrzucony");
+    assert_eq!(rejected.code, "connection.alreadyRunning");
+
+    assert!(
+        wait_for(
+            &collector,
+            |events| events
+                .iter()
+                .filter(
+                    |event| matches!(event, Event::Log { line, .. } if line == "§8[fake] ready")
+                )
+                .count()
+                >= 1,
+            Duration::from_secs(5)
+        )
+        .await,
+        "żaden proces nie wystartował"
+    );
+    // Chwila, żeby ewentualny drugi proces też zdążył wypisać gotowość.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    assert_eq!(
+        manager.active_count().await,
+        1,
+        "mapa musi trzymać dokładnie jeden proces"
+    );
+    let events = collector.snapshot();
+    let ready = events
+        .iter()
+        .filter(|event| matches!(event, Event::Log { line, .. } if line == "§8[fake] ready"))
+        .count();
+    assert_eq!(ready, 1, "tylko jeden proces MCC może wystartować");
+    assert!(
+        !status_events(&events).contains(&AccountStatus::Crashed),
+        "odrzucony start nie może kończyć się fałszywą awarią"
+    );
+
+    manager
+        .stop_connection(&conn("a", SERVER))
+        .await
+        .expect("zatrzymanie");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// R-04: zapis do `stdin`, którego proces nie czyta, nie może zablokować
+/// zatrzymania połączenia (ani reszty aplikacji przez globalną blokadę mapy).
+#[tokio::test]
+async fn stalled_stdin_does_not_block_stop() {
+    let (collector, dir, manager) = started_manager().await;
+    // Wyzwalacz musi istnieć, zanim atrapa wystartuje.
+    std::fs::create_dir_all(dir.join("a")).expect("katalog konta");
+    std::fs::write(dir.join("a").join("fake-stall-stdin"), b"1").expect("wyzwalacz");
+    start_account(&manager, &dir, "a", SERVER, false).await;
+    assert!(wait_for(&collector, saw_running, Duration::from_secs(5)).await);
+
+    let manager = Arc::new(manager);
+    let sender = {
+        let manager = Arc::clone(&manager);
+        tokio::spawn(async move {
+            // 300 wpisów po 512 bajtów nie mieści się w buforze potoku.
+            for _ in 0..300 {
+                let _ = manager
+                    .send_input(&conn("a", SERVER), &"x".repeat(512))
+                    .await;
+            }
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(8),
+        manager.stop_connection(&conn("a", SERVER)),
+    )
+    .await;
+    assert!(
+        outcome.is_ok(),
+        "stop_connection wisi, gdy zapis do stdin stoi"
+    );
+    outcome
+        .expect("timeout zatrzymania")
+        .expect("zatrzymanie połączenia");
+
+    assert!(
+        wait_for(
+            &collector,
+            |events| events
+                .iter()
+                .any(|event| matches!(event, Event::Status(AccountStatus::Stopped))),
+            Duration::from_secs(5)
+        )
+        .await,
+        "po wymuszonym killu musi przyjść status stopped"
+    );
+    assert_eq!(manager.active_count().await, 0);
+
+    sender.abort();
+    let _ = sender.await;
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn invalid_input_is_rejected() {
     let (_collector, dir, manager) = started_manager().await;

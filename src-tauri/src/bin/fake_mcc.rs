@@ -68,6 +68,14 @@ fn main() {
         let _ = out.flush();
     }
 
+    // Atrapa, która **nie czyta `stdin`** - symuluje zawieszony MCC. Potrzebna do
+    // testu, że zapis do `stdin` nie może zablokować zatrzymania połączenia
+    // (R-04). Wyzwalaczem jest plik w katalogu roboczym konta.
+    if std::path::Path::new("fake-stall-stdin").exists() {
+        thread::sleep(Duration::from_secs(60));
+        return;
+    }
+
     // Wątek obciążenia: wypisuje linie w tempie zbliżonym do zadanego.
     let spam_per_second = env_number("FAKE_MCC_SPAM", 0);
     let stopped = Arc::new(AtomicBool::new(false));

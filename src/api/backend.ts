@@ -50,6 +50,13 @@ export const backend = {
   /** Konta zapisane na dysku (`accounts.json`), bez uruchamiania procesów. */
   listAccounts: () => call<Account[]>('list_accounts'),
   /**
+   * Rejestruje konta w Rustcie (tworzy ich katalogi) **bez zapisu pliku**.
+   * Używane przy starcie: `accounts.json` jest już źródłem tej listy, więc jeden
+   * niepoprawny wpis nie może jej nadpisać ani wyczyścić (R-01).
+   */
+  registerAccounts: (accounts: Account[]) =>
+    call<void>('register_accounts', { accounts }),
+  /**
    * Zapisuje całą listę kont i rejestruje je w menedżerze jako `stopped`
    * (bez uruchamiania procesów). Rust waliduje listę.
    */

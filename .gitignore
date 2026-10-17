@@ -31,5 +31,9 @@ docs/MCC_NOTES.md
 docs/IDEAS.md
 IDEAS-v2.md
 
+# Raporty audytu zewnętrznego i wynik triage'u — materiał roboczy, nie część aplikacji
+docs/audit/
+docs/AUDIT_TRIAGE.md
+
 # Katalog roboczy Freebuff (identyfikator projektu, stan narzędzia)
 .freebuff/

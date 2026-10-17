@@ -9,6 +9,7 @@ import { Play, PlugZap, Unplug } from '@lucide/vue'
 import type { Connection } from '../api/contract'
 import { statusDotClass, statusKey } from '../log/status'
 import { useAccountsStore } from '../stores/accounts'
+import { isSingleClick } from '../ui/click'
 
 const props = defineProps<{ connection: Connection; accountLabel: string; follow: boolean }>()
 const emit = defineEmits<{ (event: 'update:follow', value: boolean): void }>()
@@ -23,6 +24,24 @@ const canStart = computed(() => status.value === 'stopped' || status.value === '
 const canDisconnect = computed(
   () => status.value === 'running' || status.value === 'awaiting_login',
 )
+
+// Po pierwszym kliknięciu przyciski zmieniają się (Start → Rozłącz + Połącz
+// ponownie), więc drugi klik dwukliku trafiłby w inną akcję. Każda z nich
+// sprawdza, czy to pierwsze kliknięcie.
+function onStart(event: MouseEvent): void {
+  if (!isSingleClick(event)) return
+  void accounts.startConnection(props.connection.id)
+}
+
+function onDisconnect(event: MouseEvent): void {
+  if (!isSingleClick(event)) return
+  void accounts.disconnectConnection(props.connection.id)
+}
+
+function onReconnect(event: MouseEvent): void {
+  if (!isSingleClick(event)) return
+  void accounts.restartConnection(props.connection.id)
+}
 </script>
 
 <template>
@@ -50,7 +69,7 @@ const canDisconnect = computed(
         v-if="canStart"
         type="button"
         class="flex h-7 items-center gap-1.5 rounded bg-blue-600 px-2 text-xs font-medium text-white transition-colors hover:bg-blue-500"
-        @click="accounts.startConnection(props.connection.id)"
+        @click="onStart"
       >
         <Play :size="13" />
         {{ t('account.start') }}
@@ -61,7 +80,7 @@ const canDisconnect = computed(
           type="button"
           class="flex h-7 items-center gap-1.5 rounded border border-slate-700 px-2 text-xs text-slate-200 transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="!canDisconnect"
-          @click="accounts.disconnectConnection(props.connection.id)"
+          @click="onDisconnect"
         >
           <Unplug :size="13" />
           {{ t('account.disconnect') }}
@@ -70,7 +89,7 @@ const canDisconnect = computed(
         <button
           type="button"
           class="flex h-7 items-center gap-1.5 rounded border border-slate-700 px-2 text-xs text-slate-200 transition-colors hover:bg-slate-800"
-          @click="accounts.restartConnection(props.connection.id)"
+          @click="onReconnect"
         >
           <PlugZap :size="13" />
           {{ t('account.reconnect') }}

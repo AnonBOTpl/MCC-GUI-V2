@@ -339,6 +339,20 @@ pub async fn list_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, A
     Ok(accounts)
 }
 
+/// Rejestruje konta w menedżerze (tworzy ich katalogi) **bez zapisu pliku**.
+///
+/// Używane przy starcie aplikacji: `accounts.json` jest już na dysku, więc nie ma
+/// czego zapisywać. Dzięki temu jeden niepoprawny wpis nie blokuje wczytania
+/// całej listy - menedżer pomija go, a pozostałe konta trafiają do panelu (R-01).
+#[tauri::command]
+pub async fn register_accounts(
+    state: State<'_, AppState>,
+    accounts: Vec<Account>,
+) -> Result<(), AppError> {
+    state.manager.sync_accounts(&accounts).await;
+    Ok(())
+}
+
 /// Zapisuje listę kont i rejestruje je w menedżerze (bez uruchamiania procesów).
 /// Lista jest walidowana i normalizowana.
 #[tauri::command]

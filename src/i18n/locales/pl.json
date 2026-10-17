@@ -216,6 +216,7 @@
       "invalidId": "Konto nie ma prawidłowego identyfikatora.",
       "duplicateId": "Dwa konta mają ten sam identyfikator.",
       "loginRequired": "Konto nie ma loginu.",
+      "loginControlChars": "Login konta zawiera znaki sterujące.",
       "tooManyServers": "To konto ma za dużo serwerów.",
       "notFound": "To konto już nie istnieje.",
       "notRunning": "To konto nie jest uruchomione.",
@@ -229,6 +230,7 @@
       "handleUnavailable": "Nie udało się pobrać uchwytu procesu.",
       "stdinClosed": "Konto w tej chwili nie przyjmuje danych wejściowych.",
       "writeFailed": "Nie udało się wysłać danych do konta.",
+      "writeTimeout": "Konto przestało czytać dane wejściowe, więc wiadomość nie została wysłana.",
       "exitedUnexpectedly": "Proces serwera {server} zakończył się nieoczekiwanie."
     },
     "input": {

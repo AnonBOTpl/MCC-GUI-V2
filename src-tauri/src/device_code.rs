@@ -89,15 +89,59 @@ pub fn strip_formatting(text: &str) -> String {
     strip_ansi(&strip_section_codes(text))
 }
 
-/// Sprawdza, czy adres nadaje się do otwarcia: tylko `https://`, bez spacji
-/// ani znaków sterujących (zasada: tylko adresy `https://`).
+/// Domeny, z których MCC wypisuje adres logowania.
+///
+/// Lista pochodzi z realnej próbki (`docs/MCC_NOTES.md` §3.4):
+/// `https://www.microsoft.com/link`. Dopasowanie jest **dokładne albo jako
+/// subdomena** - sam sufiks nie wystarcza (`evil-microsoft.com` nie przejdzie),
+/// a w adresie nie może być `@` ani portu udającego dalszą część hosta.
+const ALLOWED_LOGIN_HOSTS: [&str; 1] = ["microsoft.com"];
+
+/// Wyciąga host z adresu `https://...` (bez portu i ścieżki).
+///
+/// Zwraca `None` dla adresów, których przeglądarka mogłaby zinterpretować
+/// inaczej niż my: z `userinfo` (`@`), z ukośnikiem wstecznym albo z portem
+/// niebędącym liczbą.
+fn login_url_host(url: &str) -> Option<&str> {
+    let rest = url.strip_prefix("https://")?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    if authority.is_empty() || authority.contains('@') || authority.contains('\\') {
+        return None;
+    }
+    let host = match authority.rsplit_once(':') {
+        Some((host, port)) if !port.is_empty() && port.chars().all(|ch| ch.is_ascii_digit()) => {
+            host
+        }
+        Some(_) => return None,
+        None => authority,
+    };
+    (!host.is_empty()).then_some(host)
+}
+
+/// Czy host należy do dozwolonej domeny (dokładnie albo jako subdomena).
+fn is_allowed_login_host(host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    ALLOWED_LOGIN_HOSTS.iter().any(|allowed| {
+        host == *allowed
+            || host
+                .strip_suffix(allowed)
+                .is_some_and(|prefix| prefix.ends_with('.'))
+    })
+}
+
+/// Sprawdza, czy adres nadaje się do otwarcia: tylko `https://`, host
+/// z allowlisty, bez spacji ani znaków sterujących.
+///
+/// Sam wzorzec promptu nie wystarczy: gracz może wpisać na czacie zdanie
+/// „To sign in, open https://evil…”, a aplikacja nie może wtedy pokazać bannera
+/// ani otworzyć takiego adresu (R-02).
 pub fn is_allowed_login_url(url: &str) -> bool {
     url.len() > "https://".len()
         && url.len() <= 2048
-        && url.starts_with("https://")
         && !url
             .chars()
             .any(|ch| ch.is_whitespace() || ch.is_control() || ch == '"' || ch == '<' || ch == '>')
+        && login_url_host(url).is_some_and(is_allowed_login_host)
 }
 
 /// Sprawdza, czy tekst wygląda na kod z promptu logowania (walidacja wejścia
@@ -194,12 +238,41 @@ mod tests {
         assert!(is_allowed_login_url("https://www.microsoft.com/link"));
     }
 
+    /// R-02: sam szablon nie wystarczy - adres musi prowadzić do Microsoftu.
+    /// Ten sam wzorzec może wypisać gracz na czacie.
+    #[test]
+    fn ignores_prompt_spoofed_in_chat() {
+        let line = "<Steve> To sign in, open https://evil.example.com in your browser and enter the code: ABCD1234";
+        assert!(
+            detect_device_code(line).is_none(),
+            "prompt podszyty adresem spoza Microsoftu nie może trafić do bannera"
+        );
+    }
+
+    #[test]
+    fn rejects_hosts_outside_microsoft_domains() {
+        for url in [
+            "https://evil.example.com",
+            "https://microsoft.com.evil.example",
+            "https://evil-microsoft.com/link",
+            "https://www.microsoft.com@evil.example/link",
+            "https://microsoftonline.com.evil.example",
+            "https://microsoft.com:8443.evil.example/link",
+        ] {
+            assert!(!is_allowed_login_url(url), "{url} nie może przejść");
+        }
+        assert!(is_allowed_login_url("https://www.microsoft.com/link"));
+        assert!(is_allowed_login_url("https://microsoft.com/link"));
+        assert!(is_allowed_login_url("https://login.microsoft.com/link"));
+    }
+
     #[test]
     fn rejects_empty_or_oversized_code() {
-        let empty = "To sign in, open https://x.example.com in your browser and enter the code: ";
+        let empty =
+            "To sign in, open https://www.microsoft.com/link in your browser and enter the code: ";
         assert!(detect_device_code(empty).is_none());
         let long = format!(
-            "To sign in, open https://x.example.com in your browser and enter the code: {}",
+            "To sign in, open https://www.microsoft.com/link in your browser and enter the code: {}",
             "A".repeat(64)
         );
         assert!(detect_device_code(&long).is_none());
@@ -215,8 +288,7 @@ mod tests {
 
     #[test]
     fn rejects_code_with_spaces() {
-        let line =
-            "To sign in, open https://x.example.com in your browser and enter the code: AB CD";
+        let line = "To sign in, open https://www.microsoft.com/link in your browser and enter the code: AB CD";
         assert!(detect_device_code(line).is_none());
     }
 

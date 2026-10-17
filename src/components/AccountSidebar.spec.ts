@@ -13,6 +13,7 @@ vi.mock('../api/backend', () => ({
   backend: {
     stopConnection: vi.fn(),
     startConnection: vi.fn(),
+    saveOpenTabs: vi.fn(),
   },
   events: {},
 }))
@@ -32,6 +33,8 @@ describe('AccountSidebar - przycisk połączenia', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.mocked(backend.stopConnection).mockResolvedValue(undefined)
+    vi.mocked(backend.startConnection).mockResolvedValue(undefined)
+    vi.mocked(backend.saveOpenTabs).mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -92,6 +95,26 @@ describe('AccountSidebar - przycisk połączenia', () => {
     const start = wrapper.get(`button[title="${i18n.global.t('account.start')}"]`)
     expect(start.classes()).toContain('text-green-400')
     expect(wrapper.findAll(`button[title="${i18n.global.t('account.disconnect')}"]`)).toHaveLength(0)
+  })
+
+  /**
+   * Regresja z testu ręcznego B: po pierwszym kliknięciu Start w tym samym
+   * miejscu stoi już kwadrat rozłączania, więc drugi klik dwukliku zatrzymywał
+   * świeżo uruchomione połączenie.
+   */
+  it('drugi klik dwukliku nie zatrzymuje świeżo uruchomionego połączenia', async () => {
+    const wrapper = mountSidebar('stopped')
+
+    await wrapper.get(`button[title="${i18n.global.t('account.start')}"]`).trigger('click')
+    await flushPromises()
+
+    wrapper
+      .get(`button[title="${i18n.global.t('account.disconnect')}"]`)
+      .element.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }))
+    await flushPromises()
+
+    expect(backend.startConnection).toHaveBeenCalledTimes(1)
+    expect(backend.stopConnection).not.toHaveBeenCalled()
   })
 })
 

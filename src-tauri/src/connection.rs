@@ -77,9 +77,13 @@ fn fnv1a(value: &str) -> u32 {
 }
 
 /// Sprawdza i normalizuje adres serwera.
+///
+/// Znaki sterujące (`\n`, `\r`, `\t`) są odrzucane: adres trafia do literału
+/// TOML w `settings-*.ini`, więc taki znak rozjeżdża cały plik ustawień (R-09).
 pub fn validate_server(server: &str) -> Result<String, crate::error::AppError> {
     let trimmed = server.trim();
-    if trimmed.is_empty() || trimmed.len() > MAX_SERVER_LEN {
+    if trimmed.is_empty() || trimmed.len() > MAX_SERVER_LEN || trimmed.chars().any(char::is_control)
+    {
         return Err(crate::error::AppError::new("server.invalid"));
     }
     Ok(trimmed.to_string())
@@ -125,6 +129,17 @@ mod tests {
             settings_file_name("host:2"),
             "różne serwery muszą mieć różne pliki ustawień"
         );
+    }
+
+    #[test]
+    fn validate_server_rejects_control_chars() {
+        for address in ["host\n:1", "ho\rst", "a\tb"] {
+            assert_eq!(
+                validate_server(address).unwrap_err().code,
+                "server.invalid",
+                "adres {address:?}"
+            );
+        }
     }
 
     #[test]

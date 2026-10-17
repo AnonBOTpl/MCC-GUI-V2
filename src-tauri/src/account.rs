@@ -111,6 +111,21 @@ pub const MAX_SERVERS_PER_ACCOUNT: usize = 100;
 /// Maksymalna długość wymuszonej wersji Minecrafta (np. `1.21.4`).
 pub const MAX_VERSION_LEN: usize = 32;
 
+/// Czy identyfikator nadaje się na nazwę katalogu konta.
+///
+/// `accounts_root.join(id)` jest ścieżką, więc identyfikator nie może zawierać
+/// separatorów, dwukropka ani kropek (`..` wyprowadziłoby katalog poza
+/// `accounts/`). Dozwolone są znaki, które generuje UI (`acc-<base36>-<n>`)
+/// i starsze zapisy: litery, cyfry, `-` i `_`. Dzięki temu istniejące
+/// `accounts.json` przechodzą walidację bez zmian.
+pub fn is_valid_account_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= MAX_ACCOUNT_ID_LEN
+        && id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+}
+
 /// Sprawdza i normalizuje listę kont przed zapisem na dysk (kontrakt komend Tauri).
 ///
 /// Walidujemy **każde** wejście do komendy Tauri: identyfikator
@@ -123,7 +138,7 @@ pub fn validate_accounts(accounts: Vec<Account>) -> Result<Vec<Account>, AppErro
 
     for account in accounts {
         let id = account.id.trim().to_string();
-        if id.is_empty() || id.len() > MAX_ACCOUNT_ID_LEN {
+        if !is_valid_account_id(&id) {
             return Err(AppError::new("account.invalidId"));
         }
         if !seen_ids.insert(id.clone()) {
@@ -133,6 +148,11 @@ pub fn validate_accounts(accounts: Vec<Account>) -> Result<Vec<Account>, AppErro
         let login = account.login.trim().to_string();
         if login.is_empty() || login.len() > MAX_ACCOUNT_TEXT_LEN {
             return Err(AppError::new("account.loginRequired"));
+        }
+        // Znak sterujący (np. `\n`) rozjeżdża generowany TOML `settings-*.ini`,
+        // a login trafia do niego jako literał w cudzysłowach.
+        if login.chars().any(char::is_control) {
+            return Err(AppError::new("account.loginControlChars"));
         }
 
         if account.servers.len() > MAX_SERVERS_PER_ACCOUNT {
@@ -258,6 +278,40 @@ mod tests {
 
         let id_error = validate_accounts(vec![account("  ", "l", &[])]).expect_err("pusty id");
         assert_eq!(id_error.code, "account.invalidId");
+    }
+
+    /// R-01: identyfikator trafia do `accounts_root.join(id)`, więc separator
+    /// ścieżki albo `..` wyprowadza katalog poza `accounts/`.
+    #[test]
+    fn validate_rejects_path_separators_in_id() {
+        for id in ["../evil", "a/../b", "a/b", "a\\b", ".", "..", "C:", "a:b"] {
+            let error = validate_accounts(vec![account(id, "l", &[])])
+                .expect_err("taki identyfikator musi zostać odrzucony");
+            assert_eq!(error.code, "account.invalidId", "id {id:?}");
+        }
+    }
+
+    /// Identyfikatory, które aplikacja naprawdę zapisuje (UI generuje
+    /// `acc-<base36>-<n>`), muszą dalej przechodzić walidację - inaczej
+    /// istniejące `accounts.json` przestałyby się wczytywać.
+    #[test]
+    fn validate_accepts_ids_used_by_the_app() {
+        for id in ["acc-1", "acc-m6xk1p-2", "e2e-tabs", "A_b-9"] {
+            validate_accounts(vec![account(id, "l", &[])])
+                .unwrap_or_else(|error| panic!("id {id:?} powinien przejść: {}", error.code));
+        }
+    }
+
+    /// R-09: znaki sterujące w loginie rozjeżdżają generowany TOML.
+    #[test]
+    fn validate_rejects_control_chars_in_login_and_server() {
+        let login = validate_accounts(vec![account("a", "a\nb", &[])])
+            .expect_err("login ze znakiem sterującym musi zostać odrzucony");
+        assert_eq!(login.code, "account.loginControlChars");
+
+        let server = validate_accounts(vec![account("a", "l", &["host\n:1"])])
+            .expect_err("adres ze znakiem sterującym musi zostać odrzucony");
+        assert_eq!(server.code, "server.invalid");
     }
 
     #[test]

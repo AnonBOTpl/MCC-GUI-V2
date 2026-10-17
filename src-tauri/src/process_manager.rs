@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -42,9 +43,25 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 /// Co ile sprawdzamy, czy proces już się zakończył.
 const STATUS_POLL: Duration = Duration::from_millis(50);
 
+/// Ile czekamy na zapis jednej linii do `stdin`.
+///
+/// Bufor potoku może być pełny, a proces może nie czytać (zawieszony MCC). Zapis
+/// nie może wtedy trzymać ani blokady mapy połączeń, ani całej komendy `stop`
+/// (R-04).
+const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Krótszy limit dla `/quit` przy zatrzymaniu: po nim i tak wymuszamy kill.
+const QUIT_WRITE_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Uchwyt `stdin` jednego połączenia.
+///
+/// `stdin` jest za **własną** blokadą i `Arc`: zapis do procesu, który nie czyta,
+/// nie może blokować reszty menedżera (R-04).
+type StdinHandle = Arc<Mutex<Option<ChildStdin>>>;
+
 /// Uruchomiony proces połączenia.
 struct Running {
-    stdin: Option<ChildStdin>,
+    stdin: StdinHandle,
     status: AccountStatus,
     /// Kanał wymuszający kill, gdy łagodne `/quit` nie zadziała.
     kill_tx: Option<oneshot::Sender<()>>,
@@ -52,6 +69,20 @@ struct Running {
     login_prompted: bool,
     /// Czy zgłosiliśmy już połączenie z serwerem.
     joined: bool,
+    /// Numer tego startu. Czytniki i strażnik działają tylko na wpisie swojego
+    /// startu, więc spóźniony strażnik nie usunie procesu z nowszego startu (R-03).
+    generation: u64,
+}
+
+/// Dane jednego startu, przekazywane do `spawn_process`.
+///
+/// Rezerwacja wpisu w mapie powstaje **przed** uruchomieniem procesu, a `stdin`
+/// i kanał kill są jej częścią - dlatego wędrują tu razem z numerem startu.
+struct StartContext {
+    conn: Connection,
+    generation: u64,
+    stdin: StdinHandle,
+    kill_rx: oneshot::Receiver<()>,
 }
 
 /// Znacznik czasu w ms od epoki Unix.
@@ -80,6 +111,8 @@ pub struct ProcessManager<S: EventSink> {
     accounts: Mutex<HashMap<String, Account>>,
     /// Uruchomione połączenia; klucz to `connection::connection_id`.
     running: Arc<Mutex<HashMap<String, Running>>>,
+    /// Licznik startów - patrz `Running::generation`.
+    next_generation: AtomicU64,
 }
 
 impl<S: EventSink> ProcessManager<S> {
@@ -102,6 +135,7 @@ impl<S: EventSink> ProcessManager<S> {
             job,
             accounts: Mutex::new(HashMap::new()),
             running: Arc::new(Mutex::new(HashMap::new())),
+            next_generation: AtomicU64::new(1),
         })
     }
 
@@ -171,7 +205,15 @@ impl<S: EventSink> ProcessManager<S> {
     }
 
     /// Rejestruje konto: tworzy jego katalog i dodaje do menedżera. Bez procesów.
+    ///
+    /// Identyfikator jest walidowany tutaj, bo `account_dir` robi z niego ścieżkę.
+    /// `sync_accounts` woła tę funkcję także dla kont z `accounts.json`, więc bez
+    /// tego strażnika ręcznie wpisany `..` tworzyłby katalogi poza `accounts/`
+    /// (R-01).
     async fn register_account(&self, account: &Account) -> Result<(), AppError> {
+        if !crate::account::is_valid_account_id(&account.id) {
+            return Err(AppError::new("account.invalidId"));
+        }
         let dir = self.account_dir(&account.id);
         if let Err(error) = tokio::fs::create_dir_all(&dir).await {
             tracing::error!(%error, account = %account.id, "nie udało się utworzyć katalogu konta");
@@ -279,11 +321,59 @@ impl<S: EventSink> ProcessManager<S> {
             .ok_or_else(|| AppError::new("connection.notFound"))?;
 
         let conn = Connection::new(account_id, &entry.address);
-        if self.running.lock().await.contains_key(&conn.id) {
-            return Err(AppError::new("connection.alreadyRunning"));
+        // Rezerwujemy slot **pod jedną blokadą**: sprawdzenie i `insert` muszą być
+        // atomowe, inaczej dwa równoległe starty widzą wolne miejsce i uruchamiają
+        // dwa procesy (R-03). Proces startujemy dopiero po rezerwacji.
+        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
+        let stdin: StdinHandle = Arc::new(Mutex::new(None));
+        let (kill_tx, kill_rx) = oneshot::channel();
+        {
+            let mut running = self.running.lock().await;
+            if running.contains_key(&conn.id) {
+                return Err(AppError::new("connection.alreadyRunning"));
+            }
+            running.insert(
+                conn.id.clone(),
+                Running {
+                    stdin: Arc::clone(&stdin),
+                    status: AccountStatus::Starting,
+                    kill_tx: Some(kill_tx),
+                    login_prompted: false,
+                    joined: false,
+                    generation,
+                },
+            );
         }
+        self.sink.emit_status(&conn.id, AccountStatus::Starting);
 
-        self.spawn_process(&account, &entry, &mcc_exe).await
+        let start = StartContext {
+            conn: conn.clone(),
+            generation,
+            stdin,
+            kill_rx,
+        };
+        match self.spawn_process(&account, &entry, &mcc_exe, start).await {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                // Nieudany start nie może zostawić rezerwacji: `start` byłby
+                // zablokowany do końca życia aplikacji, a UI widziałoby `starting`.
+                let removed = {
+                    let mut running = self.running.lock().await;
+                    if running
+                        .get(&conn.id)
+                        .is_some_and(|current| current.generation == generation)
+                    {
+                        running.remove(&conn.id)
+                    } else {
+                        None
+                    }
+                };
+                if removed.is_some() {
+                    self.sink.emit_status(&conn.id, AccountStatus::Stopped);
+                }
+                Err(error)
+            }
+        }
     }
 
     /// Ponownie uruchamia połączenie (stop, jeśli działa, potem start).
@@ -303,17 +393,28 @@ impl<S: EventSink> ProcessManager<S> {
         // i pokazał fałszywy błąd w UI.
         let quitting = input::is_quit_command(&line);
 
-        let mut running = self.running.lock().await;
-        let entry = running
-            .get_mut(connection_id)
-            .ok_or_else(|| AppError::new("connection.notRunning"))?;
+        // Blokadę mapy trzymamy tylko na czas odczytu wpisu. Zapis do `stdin`
+        // (może czekać na zwolnienie bufora potoku) dzieje się poza nią, więc
+        // zawieszony proces nie blokuje reszty aplikacji (R-04).
         // Do `stdin` piszemy także w `awaiting_login` - MCC oczekuje tam
         // ewentualnej odpowiedzi użytkownika (np. wyboru serwera lub wersji).
-        write_line(entry, &line).await?;
+        let (stdin, generation) = {
+            let running = self.running.lock().await;
+            let entry = running
+                .get(connection_id)
+                .ok_or_else(|| AppError::new("connection.notRunning"))?;
+            (Arc::clone(&entry.stdin), entry.generation)
+        };
+        write_line_with_timeout(&stdin, &line, WRITE_TIMEOUT).await?;
         if quitting {
-            // Blokadę trzymamy do końca, więc strażnik nie zdejmie wpisu przed
-            // ustawieniem statusu - nie ma wyścigu.
-            entry.status = AccountStatus::Stopping;
+            // Status zmieniamy dopiero po udanym zapisie i tylko wtedy, gdy wpis
+            // nadal należy do tego samego startu.
+            let mut running = self.running.lock().await;
+            if let Some(entry) = running.get_mut(connection_id)
+                && entry.generation == generation
+            {
+                entry.status = AccountStatus::Stopping;
+            }
         }
         Ok(())
     }
@@ -326,30 +427,37 @@ impl<S: EventSink> ProcessManager<S> {
         // użytkownika, więc status `Stopping` zamiast fałszywego `Crashed`.
         let quitting = input::is_quit_command(&line);
 
-        let ids: Vec<String> = {
+        // Snapshot raz, bez trzymania mapy przez całą wysyłkę: każdy zapis może
+        // czekać na zwolnienie bufora potoku (R-04).
+        let targets: Vec<(String, StdinHandle, u64)> = {
             let running = self.running.lock().await;
             running
                 .iter()
-                .filter(|(_, entry)| is_input_ready(entry.status) && entry.stdin.is_some())
-                .map(|(id, _)| id.clone())
+                .filter(|(_, entry)| is_input_ready(entry.status))
+                .map(|(id, entry)| (id.clone(), Arc::clone(&entry.stdin), entry.generation))
                 .collect()
         };
 
         let mut sent = Vec::new();
-        for (index, id) in ids.iter().enumerate() {
+        for (index, (id, stdin, generation)) in targets.iter().enumerate() {
             if index > 0 && delay_ms > 0 {
                 sleep(Duration::from_millis(delay_ms)).await;
             }
-            let mut running = self.running.lock().await;
-            if let Some(entry) = running.get_mut(id)
-                && is_input_ready(entry.status)
-                && write_line(entry, &line).await.is_ok()
+            if write_line_with_timeout(stdin, &line, WRITE_TIMEOUT)
+                .await
+                .is_err()
             {
-                if quitting {
+                continue;
+            }
+            if quitting {
+                let mut running = self.running.lock().await;
+                if let Some(entry) = running.get_mut(id)
+                    && entry.generation == *generation
+                {
                     entry.status = AccountStatus::Stopping;
                 }
-                sent.push(id.clone());
             }
+            sent.push(id.clone());
         }
         Ok(sent)
     }
@@ -365,37 +473,56 @@ impl<S: EventSink> ProcessManager<S> {
     /// `docs/MCC_NOTES.md` §3.2). Wcześniejsze ciche wyjście czyniło z przycisku
     /// „Disconnect" martwy przycisk: proces żył dalej, a UI pokazywało `running`.
     pub async fn stop_connection(&self, connection_id: &str) -> Result<(), AppError> {
-        if !self.running.lock().await.contains_key(connection_id) {
-            return Ok(());
-        }
-
-        // `true` = `/quit` poszło właśnie teraz, `false` = ta komenda była już wysłana
-        // wcześniej, więc nie wysyłamy jej drugi raz.
-        let quit_sent = {
+        // `stdin` bierzemy z wpisu, ale blokadę mapy zwalniamy od razu. Zapis
+        // `/quit` ma własny krótki timeout, bo proces może nie czytać `stdin`
+        // (R-04) - po nim przechodzimy do wymuszonego kill.
+        let (stdin, quit_sent, was_starting, generation) = {
             let mut running = self.running.lock().await;
             let Some(entry) = running.get_mut(connection_id) else {
                 return Ok(());
             };
+            let generation = entry.generation;
             if entry.status == AccountStatus::Stopping {
-                false
+                // `/quit` poszło już wcześniej - nie wysyłamy go drugi raz.
+                (None, false, false, generation)
             } else {
+                // `Starting` = proces dopiero wstaje (rezerwacja istnieje, `stdin`
+                // może być jeszcze pusty). Nie ma czego zamykać łagodnie.
+                let was_starting = entry.status == AccountStatus::Starting;
                 entry.status = AccountStatus::Stopping;
-                if let Some(stdin) = entry.stdin.as_mut() {
-                    let _ = stdin.write_all(QUIT_COMMAND.as_bytes()).await;
-                    let _ = stdin.write_all(b"\n").await;
-                    let _ = stdin.flush().await;
-                }
-                true
+                (
+                    Some(Arc::clone(&entry.stdin)),
+                    true,
+                    was_starting,
+                    generation,
+                )
             }
         };
 
         self.sink
             .emit_status(connection_id, AccountStatus::Stopping);
-        if quit_sent {
-            tracing::info!(connection = %connection_id, "wysłano /quit, czekam na zamknięcie");
-            if self.wait_until_stopped(connection_id, STOP_TIMEOUT).await {
-                return Ok(());
+        if quit_sent && !was_starting {
+            let quit_delivered = match stdin {
+                Some(stdin) => write_line_with_timeout(&stdin, QUIT_COMMAND, QUIT_WRITE_TIMEOUT)
+                    .await
+                    .is_ok(),
+                None => false,
+            };
+            if quit_delivered {
+                tracing::info!(connection = %connection_id, "wysłano /quit, czekam na zamknięcie");
+                if self
+                    .wait_until_stopped(connection_id, generation, STOP_TIMEOUT)
+                    .await
+                {
+                    return Ok(());
+                }
+            } else {
+                // Nie ma czego czekać: proces nie czyta potoku, więc łagodne
+                // zamknięcie i tak nie zadziała. Od razu wymuszamy kill.
+                tracing::warn!(connection = %connection_id, "nie udało się wysłać /quit");
             }
+        } else if quit_sent {
+            tracing::info!(connection = %connection_id, "zatrzymanie w trakcie startu");
         } else {
             tracing::warn!(
                 connection = %connection_id,
@@ -409,12 +536,15 @@ impl<S: EventSink> ProcessManager<S> {
             let mut running = self.running.lock().await;
             running
                 .get_mut(connection_id)
+                .filter(|entry| entry.generation == generation)
                 .and_then(|entry| entry.kill_tx.take())
         };
         if let Some(tx) = kill_tx {
             let _ = tx.send(());
         }
-        let _ = self.wait_until_stopped(connection_id, STOP_TIMEOUT).await;
+        let _ = self
+            .wait_until_stopped(connection_id, generation, STOP_TIMEOUT)
+            .await;
         Ok(())
     }
 
@@ -435,11 +565,23 @@ impl<S: EventSink> ProcessManager<S> {
     }
 
     /// Czeka, aż wpis zniknie z mapy uruchomionych (proces się zakończył).
-    async fn wait_until_stopped(&self, connection_id: &str, timeout: Duration) -> bool {
+    ///
+    /// `generation` pilnuje, żeby nie czekać na wpis **nowszego** startu, który
+    /// zajął to samo miejsce po restarcie.
+    async fn wait_until_stopped(
+        &self,
+        connection_id: &str,
+        generation: u64,
+        timeout: Duration,
+    ) -> bool {
         let deadline = Instant::now() + timeout;
         loop {
-            if !self.running.lock().await.contains_key(connection_id) {
-                return true;
+            {
+                let running = self.running.lock().await;
+                match running.get(connection_id) {
+                    Some(entry) if entry.generation == generation => {}
+                    _ => return true,
+                }
             }
             if Instant::now() >= deadline {
                 return false;
@@ -454,8 +596,15 @@ impl<S: EventSink> ProcessManager<S> {
         account: &Account,
         server: &ServerEntry,
         mcc_exe: &Path,
+        start: StartContext,
     ) -> Result<(), AppError> {
-        let conn = Connection::new(&account.id, &server.address);
+        let StartContext {
+            conn,
+            generation,
+            stdin,
+            kill_rx,
+        } = start;
+        let conn = &conn;
         let dir = self.account_dir(&account.id);
         if let Err(error) = tokio::fs::create_dir_all(&dir).await {
             tracing::error!(%error, account = %account.id, "nie udało się utworzyć katalogu konta");
@@ -501,23 +650,12 @@ impl<S: EventSink> ProcessManager<S> {
             }
         }
 
-        let stdin = child.stdin.take();
+        // Slot `stdin` wypełniamy poza blokadą mapy - rezerwacja już istnieje.
+        // Gdy użytkownik zdążył zatrzymać start, dostanie sygnał kill, ale wpis
+        // musi zostać uzupełniony, żeby strażnik mógł go sprzątnąć.
+        *stdin.lock().await = child.stdin.take();
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-
-        // Wpis musi powstać zanim wystartują czytniki i strażnik, inaczej wyścig.
-        let (kill_tx, kill_rx) = oneshot::channel();
-        self.running.lock().await.insert(
-            conn.id.clone(),
-            Running {
-                stdin,
-                status: AccountStatus::Starting,
-                kill_tx: Some(kill_tx),
-                login_prompted: false,
-                joined: false,
-            },
-        );
-        self.sink.emit_status(&conn.id, AccountStatus::Starting);
 
         // Czytniki `stdout`/`stderr` - po jednym zadaniu na strumień. Czytnik
         // `stdout` dodatkowo wykrywa prompt logowania i moment połączenia.
@@ -525,6 +663,7 @@ impl<S: EventSink> ProcessManager<S> {
             self.running.clone(),
             self.sink.clone(),
             conn.id.clone(),
+            generation,
             stdout,
             LogStream::Stdout,
         );
@@ -532,6 +671,7 @@ impl<S: EventSink> ProcessManager<S> {
             self.running.clone(),
             self.sink.clone(),
             conn.id.clone(),
+            generation,
             stderr,
             LogStream::Stderr,
         );
@@ -542,6 +682,7 @@ impl<S: EventSink> ProcessManager<S> {
             self.sink.clone(),
             conn.id.clone(),
             server.address.clone(),
+            generation,
             child,
             kill_rx,
         );
@@ -556,7 +697,9 @@ impl<S: EventSink> ProcessManager<S> {
         {
             let mut running = self.running.lock().await;
             if let Some(entry) = running.get_mut(&conn.id)
+                && entry.generation == generation
                 && !entry.login_prompted
+                && entry.status != AccountStatus::Stopping
             {
                 entry.status = AccountStatus::Running;
                 self.sink.emit_status(&conn.id, AccountStatus::Running);
@@ -576,22 +719,46 @@ fn is_input_ready(status: AccountStatus) -> bool {
     )
 }
 
-/// Zapisuje jedną linię do `stdin` procesu (z terminatora `\n`).
-async fn write_line(entry: &mut Running, line: &str) -> Result<(), AppError> {
-    let stdin = entry
-        .stdin
+/// Zapisuje jedną linię do `stdin` procesu (z terminatorem `\n`).
+///
+/// Blokadę bierze tylko na czas tego zapisu - to **nie** jest blokada mapy
+/// połączeń, więc wolny proces nie zatrzymuje reszty menedżera.
+async fn write_line(stdin: &Mutex<Option<ChildStdin>>, line: &str) -> Result<(), AppError> {
+    let mut guard = stdin.lock().await;
+    let stdin = guard
         .as_mut()
         .ok_or_else(|| AppError::new("process.stdinClosed"))?;
-    if let Err(error) = stdin.write_all(line.as_bytes()).await {
-        return Err(io_error("process.writeFailed", &error));
-    }
-    if let Err(error) = stdin.write_all(b"\n").await {
+    // Jedno `write_all` z terminatorem: mniej okazji, żeby przerwany zapis
+    // zostawił w potoku połowę linii.
+    let mut payload = Vec::with_capacity(line.len() + 1);
+    payload.extend_from_slice(line.as_bytes());
+    payload.push(b'\n');
+    if let Err(error) = stdin.write_all(&payload).await {
         return Err(io_error("process.writeFailed", &error));
     }
     if let Err(error) = stdin.flush().await {
         return Err(io_error("process.writeFailed", &error));
     }
     Ok(())
+}
+
+/// Zapis z limitem czasu.
+///
+/// Po timeoucie przyszłość jest przerywana (blokada `stdin` się zwalnia),
+/// a wołający dostaje stabilny błąd zamiast czekać w nieskończoność na proces,
+/// który nie czyta potoku (R-04).
+async fn write_line_with_timeout(
+    stdin: &Mutex<Option<ChildStdin>>,
+    line: &str,
+    limit: Duration,
+) -> Result<(), AppError> {
+    match tokio::time::timeout(limit, write_line(stdin, line)).await {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!("zapis do stdin nie zakończył się w czasie");
+            Err(AppError::new("process.writeTimeout"))
+        }
+    }
 }
 
 /// Uruchamia zadanie czytające strumień linia po linii i emitujące `mcc://log`.
@@ -606,6 +773,7 @@ async fn read_lines<S, R>(
     running: Arc<Mutex<HashMap<String, Running>>>,
     sink: Arc<S>,
     connection_id: String,
+    generation: u64,
     reader: R,
     stream: LogStream,
 ) where
@@ -635,7 +803,7 @@ async fn read_lines<S, R>(
                 // wysłaniem linii, żeby banner i status były już aktualne, gdy UI
                 // dostanie tę linię logu.
                 if stream == LogStream::Stdout {
-                    handle_stdout_signals(&running, &sink, &connection_id, &line).await;
+                    handle_stdout_signals(&running, &sink, &connection_id, generation, &line).await;
                 }
 
                 sink.emit_log(&connection_id, stream, line, now_ms());
@@ -657,6 +825,7 @@ async fn handle_stdout_signals<S>(
     running: &Arc<Mutex<HashMap<String, Running>>>,
     sink: &Arc<S>,
     connection_id: &str,
+    generation: u64,
     line: &str,
 ) where
     S: EventSink,
@@ -665,6 +834,10 @@ async fn handle_stdout_signals<S>(
     let Some(entry) = map.get_mut(connection_id) else {
         return;
     };
+    // Spóźnione linie poprzedniego procesu nie mogą zmieniać stanu nowego.
+    if entry.generation != generation {
+        return;
+    }
 
     if !entry.login_prompted
         && let Some(prompt) = device_code::detect_device_code(line)
@@ -695,6 +868,7 @@ fn spawn_reader<S, R>(
     running: Arc<Mutex<HashMap<String, Running>>>,
     sink: Arc<S>,
     connection_id: String,
+    generation: u64,
     reader: Option<R>,
     stream: LogStream,
 ) where
@@ -704,7 +878,14 @@ fn spawn_reader<S, R>(
     let Some(reader) = reader else {
         return;
     };
-    tokio::spawn(read_lines(running, sink, connection_id, reader, stream));
+    tokio::spawn(read_lines(
+        running,
+        sink,
+        connection_id,
+        generation,
+        reader,
+        stream,
+    ));
 }
 
 /// Uruchamia strażnika, który czeka na zakończenie procesu i emituje status.
@@ -713,6 +894,7 @@ fn spawn_waiter<S>(
     sink: Arc<S>,
     connection_id: String,
     server: String,
+    generation: u64,
     mut child: Child,
     kill_rx: oneshot::Receiver<()>,
 ) where
@@ -729,15 +911,24 @@ fn spawn_waiter<S>(
             let _ = child.wait().await;
         }
 
+        // Usuwamy wpis tylko wtedy, gdy nadal należy do tego startu - inaczej
+        // spóźniony strażnik zdjąłby proces z nowszego startu (R-03).
         let status = {
             let mut map = running.lock().await;
-            map.remove(&connection_id).map(|entry| {
-                if entry.status == AccountStatus::Stopping {
-                    AccountStatus::Stopped
-                } else {
-                    AccountStatus::Crashed
-                }
-            })
+            if map
+                .get(&connection_id)
+                .is_some_and(|entry| entry.generation == generation)
+            {
+                map.remove(&connection_id).map(|entry| {
+                    if entry.status == AccountStatus::Stopping {
+                        AccountStatus::Stopped
+                    } else {
+                        AccountStatus::Crashed
+                    }
+                })
+            } else {
+                None
+            }
         };
 
         if let Some(status) = status {
@@ -815,6 +1006,7 @@ mod tests {
             no_running(),
             sink.clone(),
             "conn".to_string(),
+            1,
             raw,
             LogStream::Stdout,
         )
@@ -835,6 +1027,7 @@ mod tests {
             no_running(),
             sink.clone(),
             "conn".to_string(),
+            1,
             b"one\r\ntwo\nthree".as_slice(),
             LogStream::Stdout,
         )
@@ -873,6 +1066,35 @@ mod tests {
         assert_eq!(
             accounts.get("acc-restore").map(|a| a.servers.len()),
             Some(1)
+        );
+        drop(accounts);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// R-01: zły identyfikator nie może utworzyć katalogu ani zablokować
+    /// rejestracji pozostałych kont.
+    #[tokio::test]
+    async fn invalid_account_id_is_skipped_without_creating_directories() {
+        let root = temp_root("badid");
+        let sink = Arc::new(Collector::default());
+        let manager = ProcessManager::new(None, root.clone(), sink).expect("menedżer");
+
+        let error = manager
+            .add_account(sample_account("../evil", &[]))
+            .await
+            .expect_err("identyfikator ze ścieżką musi zostać odrzucony");
+        assert_eq!(error.code, "account.invalidId");
+        assert!(!manager.accounts.lock().await.contains_key("../evil"));
+
+        manager
+            .sync_accounts(&[sample_account("../evil", &[]), sample_account("good", &[])])
+            .await;
+        let accounts = manager.accounts.lock().await;
+        assert!(!accounts.contains_key("../evil"));
+        assert!(
+            accounts.contains_key("good"),
+            "dobry wpis musi zostać zarejestrowany mimo złego sąsiada"
         );
         drop(accounts);
 
