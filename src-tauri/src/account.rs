@@ -137,56 +137,66 @@ pub fn validate_accounts(accounts: Vec<Account>) -> Result<Vec<Account>, AppErro
     let mut seen_ids = std::collections::HashSet::with_capacity(accounts.len());
 
     for account in accounts {
-        let id = account.id.trim().to_string();
-        if !is_valid_account_id(&id) {
-            return Err(AppError::new("account.invalidId"));
-        }
-        if !seen_ids.insert(id.clone()) {
+        let account = validate_account(account)?;
+        if !seen_ids.insert(account.id.clone()) {
             return Err(AppError::new("account.duplicateId"));
         }
-
-        let login = account.login.trim().to_string();
-        if login.is_empty() || login.len() > MAX_ACCOUNT_TEXT_LEN {
-            return Err(AppError::new("account.loginRequired"));
-        }
-        // Znak sterujący (np. `\n`) rozjeżdża generowany TOML `settings-*.ini`,
-        // a login trafia do niego jako literał w cudzysłowach.
-        if login.chars().any(char::is_control) {
-            return Err(AppError::new("account.loginControlChars"));
-        }
-
-        if account.servers.len() > MAX_SERVERS_PER_ACCOUNT {
-            return Err(AppError::new("account.tooManyServers"));
-        }
-
-        let mut servers: Vec<ServerEntry> = Vec::with_capacity(account.servers.len());
-        let mut seen_servers = std::collections::HashSet::new();
-        for entry in account.servers {
-            let address = crate::connection::validate_server(&entry.address)?;
-            let version = normalize_version(entry.version.as_deref())?;
-            if seen_servers.insert(address.to_lowercase()) {
-                servers.push(ServerEntry { address, version });
-            }
-        }
-
-        let label = account.label.trim();
-        let label = if label.is_empty() {
-            login.clone()
-        } else {
-            label.chars().take(MAX_ACCOUNT_TEXT_LEN).collect()
-        };
-
-        normalized.push(Account {
-            id,
-            label,
-            account_type: account.account_type,
-            login,
-            servers,
-            tab_order: account.tab_order.max(0),
-        });
+        normalized.push(account);
     }
 
     Ok(normalized)
+}
+
+/// Sprawdza i normalizuje **jedno** konto (bez pilnowania unikalności w liście).
+///
+/// Wydzielone z [`validate_accounts`], bo tej samej reguły używa wczytywanie
+/// `accounts.json` wpis po wpisie (R-16): wpis, który jej nie przechodzi, jest
+/// pomijany razem z ostrzeżeniem, a nie wycina całej listy kont.
+pub fn validate_account(account: Account) -> Result<Account, AppError> {
+    let id = account.id.trim().to_string();
+    if !is_valid_account_id(&id) {
+        return Err(AppError::new("account.invalidId"));
+    }
+
+    let login = account.login.trim().to_string();
+    if login.is_empty() || login.len() > MAX_ACCOUNT_TEXT_LEN {
+        return Err(AppError::new("account.loginRequired"));
+    }
+    // Znak sterujący (np. `\n`) rozjeżdża generowany TOML `settings-*.ini`,
+    // a login trafia do niego jako literał w cudzysłowach.
+    if login.chars().any(char::is_control) {
+        return Err(AppError::new("account.loginControlChars"));
+    }
+
+    if account.servers.len() > MAX_SERVERS_PER_ACCOUNT {
+        return Err(AppError::new("account.tooManyServers"));
+    }
+
+    let mut servers: Vec<ServerEntry> = Vec::with_capacity(account.servers.len());
+    let mut seen_servers = std::collections::HashSet::new();
+    for entry in account.servers {
+        let address = crate::connection::validate_server(&entry.address)?;
+        let version = normalize_version(entry.version.as_deref())?;
+        if seen_servers.insert(address.to_lowercase()) {
+            servers.push(ServerEntry { address, version });
+        }
+    }
+
+    let label = account.label.trim();
+    let label = if label.is_empty() {
+        login.clone()
+    } else {
+        label.chars().take(MAX_ACCOUNT_TEXT_LEN).collect()
+    };
+
+    Ok(Account {
+        id,
+        label,
+        account_type: account.account_type,
+        login,
+        servers,
+        tab_order: account.tab_order.max(0),
+    })
 }
 
 /// Normalizuje wymuszoną wersję Minecrafta: puste znaczy `auto` (`None`),

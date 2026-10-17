@@ -72,6 +72,38 @@ describe('i18n', () => {
     expect(polishPluralRule(5, 2)).toBe(1)
   })
 
+  it('odmienia liczbę pominiętych wpisów w pliku danych (R-16)', () => {
+    const t = translator('pl')
+
+    // Pierwszy komunikat błędu z liczbą mnogą - formy łatwo skleić w jedną.
+    expect(t.t('errors.store.entriesSkipped', { count: 1, file: 'accounts.json' })).toContain(
+      'Pominięto 1 wpis w pliku accounts.json',
+    )
+    expect(t.t('errors.store.entriesSkipped', { count: 3, file: 'accounts.json' })).toContain(
+      'Pominięto 3 wpisy',
+    )
+    expect(t.t('errors.store.entriesSkipped', { count: 5, file: 'accounts.json' })).toContain(
+      'Pominięto 5 wpisów',
+    )
+    expect(translator('en').t('errors.store.entriesSkipped', { count: 1, file: 'accounts.json' })).toContain(
+      'Skipped 1 entry',
+    )
+  })
+
+  it('ma własne teksty dla kodów plików danych (R-10)', () => {
+    const codes = ['fileUnreadable', 'fileQuarantined', 'entriesSkipped']
+
+    for (const locale of ['en', 'pl'] as const) {
+      const t = translator(locale)
+      const generic = t.t('errors.app.unexpectedError')
+      for (const code of codes) {
+        const text = t.t(`errors.store.${code}`, { file: 'accounts.json', count: 2 })
+        expect(text, `${locale}.${code}`).not.toBe(generic)
+        expect(text, `${locale}.${code}`).toContain('accounts.json')
+      }
+    }
+  })
+
   it('wypisuje @ w podpowiedzi loginu, a nie znacznik escapingu', () => {
     // `@` ma w vue-i18n znaczenie specjalne, więc w plikach jest jako `{'@'}`.
     expect(translator('en').t('addAccount.loginPlaceholder')).toBe('you@example.com')

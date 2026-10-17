@@ -6,11 +6,23 @@
 //!
 //! W plikach **nie ma żadnych sekretów** - konto nie ma pola hasła, a sesje MCC
 //! żyją wyłącznie w katalogach kont i aplikacja ich nie dotyka.
+//!
+//! Dwa zabezpieczenia danych użytkownika:
+//!
+//! - **Odczyt wpis po wpisie** (`accounts.json`, R-16): jeden niepoprawny wpis
+//!   nie kasuje całej listy - reszta kont wczytuje się normalnie, a o pominiętych
+//!   wpisach informujemy w UI.
+//! - **Blokada nadpisania** (R-10): jeśli pliku nie dało się odczytać, zapisujemy
+//!   obok kopię (`<nazwa>.bad-<RRRR-MM-DD-HHMMSS>`) i **nie pozwalamy** zastąpić
+//!   go wartościami domyślnymi, dopóki nie uda się go poprawnie wczytać.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde_json::json;
 
 use crate::account::Account;
 use crate::error::AppError;
@@ -30,14 +42,41 @@ pub const PRESETS_FILE: &str = "presets.json";
 /// Nazwa pliku z sesją: zakładki (połączenia) otwarte przy zamknięciu aplikacji.
 pub const SESSION_FILE: &str = "session.json";
 
+/// Ostrzeżenie o pliku danych, który nie wczytał się w całości.
+///
+/// Ta sama forma co błąd (kod + parametry), bo frontend pokazuje je jako toast
+/// tą samą drogą - Rust nie wysyła tekstów dla człowieka.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoreWarning {
+    pub code: String,
+    pub params: serde_json::Value,
+}
+
+/// Problem z plikiem wykryty przy odczycie.
+struct FileIssue {
+    /// Czy zapis ma być wstrzymany, żeby nie nadpisać pliku wartościami domyślnymi.
+    blocks_writes: bool,
+    /// Czy użytkownik został już o tym pliku powiadomiony (i czy powstała kopia).
+    reported: bool,
+}
+
 /// Czyta i zapisuje pliki JSON w katalogu danych aplikacji.
 pub struct Store {
     root: PathBuf,
+    /// Problemy z plikami, kluczowane nazwą pliku. `std::sync::Mutex`, bo sekcje
+    /// krytyczne są krótkie i nie zawierają `await`.
+    issues: Mutex<HashMap<String, FileIssue>>,
+    /// Ostrzeżenia do pokazania w UI - opróżniane przy pierwszej komendzie.
+    warnings: Mutex<Vec<StoreWarning>>,
 }
 
 impl Store {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            root,
+            issues: Mutex::new(HashMap::new()),
+            warnings: Mutex::new(Vec::new()),
+        }
     }
 
     /// Katalog danych aplikacji (tu też żyją katalogi kont).
@@ -45,8 +84,20 @@ impl Store {
         &self.root
     }
 
-    /// Wczytuje ustawienia. Brak pliku lub uszkodzony plik daje wartości domyślne
-    /// (z ostrzeżeniem), żeby aplikacja zawsze wystartowała.
+    /// Bierze ostrzeżenia do pokazania w UI (lista zostaje pusta).
+    ///
+    /// Pliki czytamy przy starcie, czyli zanim okno zdąży podłączyć nasłuchy,
+    /// więc ostrzeżenia czekają tutaj na pierwszą komendę z frontendu.
+    pub fn take_warnings(&self) -> Vec<StoreWarning> {
+        let mut warnings = self
+            .warnings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::mem::take(&mut *warnings)
+    }
+
+    /// Wczytuje ustawienia. Brak pliku daje wartości domyślne, a plik uszkodzony
+    /// (albo nieczytelny) zostawia kopię obok i wstrzymuje zapis do niego.
     pub async fn load_settings(&self) -> AppSettings {
         self.read_or_default(SETTINGS_FILE, AppSettings::default)
             .await
@@ -58,8 +109,72 @@ impl Store {
     }
 
     /// Wczytuje zapisane konta (bez uruchamiania procesów).
+    ///
+    /// Czytanie jest **wpis po wpisie** (R-16): konta, których nie da się
+    /// odczytać albo które nie przechodzą walidacji, są pomijane i policzone,
+    /// a reszta listy trafia do panelu. Dzięki temu jeden zepsuty wpis nie
+    /// zamienia wszystkich kont w pustą listę (a pierwszy zapis nie utrwala tej
+    /// pustki na dysku).
     pub async fn load_accounts(&self) -> Vec<Account> {
-        self.read_or_default(ACCOUNTS_FILE, Vec::new).await
+        let file = ACCOUNTS_FILE;
+        let raw = match self.read_file(file).await {
+            Ok(Some(raw)) => raw,
+            Ok(None) => return Vec::new(),
+            Err(error) => {
+                tracing::warn!(%error, file = %self.root.join(file).display(), "nie udało się odczytać listy kont");
+                self.report_unreadable(file, None).await;
+                return Vec::new();
+            }
+        };
+
+        let entries: Vec<serde_json::Value> = match serde_json::from_str(&raw) {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::warn!(%error, file = %self.root.join(file).display(), "uszkodzony plik kont; zostawiam kopię i nie nadpisuję pliku");
+                self.report_unreadable(file, Some(&raw)).await;
+                return Vec::new();
+            }
+        };
+
+        let mut kept: Vec<Account> = Vec::with_capacity(entries.len());
+        let mut ids: HashSet<String> = HashSet::with_capacity(entries.len());
+        let mut dropped = 0usize;
+
+        for entry in entries {
+            let account = match serde_json::from_value::<Account>(entry) {
+                Ok(account) => account,
+                Err(error) => {
+                    tracing::warn!(%error, "pominięty wpis konta: nie da się go odczytać");
+                    dropped += 1;
+                    continue;
+                }
+            };
+            let account = match crate::account::validate_account(account) {
+                Ok(account) => account,
+                Err(error) => {
+                    tracing::warn!(%error, "pominięty wpis konta: nie przechodzi walidacji");
+                    dropped += 1;
+                    continue;
+                }
+            };
+            // Powtórzony identyfikator zostawia pierwszy wpis - inaczej lista
+            // nie przeszłaby zapisu (`account.duplicateId`).
+            if !ids.insert(account.id.clone()) {
+                tracing::warn!(id = %account.id, "pominięty wpis konta: powtórzony identyfikator");
+                dropped += 1;
+                continue;
+            }
+            kept.push(account);
+        }
+
+        if dropped > 0 {
+            tracing::warn!(dropped, file, "pominięto wpisy w pliku kont");
+            self.report_skipped(file, dropped, &raw).await;
+        } else {
+            self.clear_issue(file);
+        }
+
+        kept
     }
 
     /// Zapisuje konta atomowo.
@@ -69,7 +184,7 @@ impl Store {
 
     /// Wczytuje presety szybkich akcji przy starcie. Czytanie jest **łagodne**:
     /// brak pliku oznacza po prostu „brak presetów”, a plik ręcznie zepsuty
-    /// logujemy i wracamy do pustej listy, żeby aplikacja wystartowała.
+    /// logujemy (z kopią obok) i wracamy do pustej listy, żeby aplikacja wystartowała.
     pub async fn load_presets(&self) -> Vec<Preset> {
         self.read_or_default(PRESETS_FILE, Vec::new).await
     }
@@ -79,22 +194,34 @@ impl Store {
     /// W przeciwieństwie do startu jest **ścisłe**: jeśli plik istnieje, ale jest
     /// niepoprawnym JSON-em (np. po ręcznej edycji), zwracamy błąd, bo wtedy
     /// użytkownik musi się o tym dowiedzieć - inaczej zobaczyłby pusty pasek
-    /// bez wyjaśnienia i mógłby przypadkiem nadpisać plik.
+    /// bez wyjaśnienia i mógłby przypadkiem nadpisać plik. Udany odczyt zdejmuje
+    /// blokadę zapisu (to jest droga naprawy bez restartu aplikacji).
     pub async fn reload_presets(&self) -> Result<Vec<Preset>, AppError> {
         let path = self.root.join(PRESETS_FILE);
         let raw = match tokio::fs::read_to_string(&path).await {
             Ok(raw) => raw,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                self.clear_issue(PRESETS_FILE);
+                return Ok(Vec::new());
+            }
             Err(error) => {
                 tracing::warn!(%error, file = %path.display(), "nie udało się odczytać presetów");
+                self.report_unreadable(PRESETS_FILE, None).await;
                 return Err(AppError::new("presets.readFailed"));
             }
         };
 
-        serde_json::from_str(&raw).map_err(|error| {
-            tracing::warn!(%error, file = %path.display(), "uszkodzony plik presetów");
-            AppError::new("presets.readFailed")
-        })
+        match serde_json::from_str(&raw) {
+            Ok(presets) => {
+                self.clear_issue(PRESETS_FILE);
+                Ok(presets)
+            }
+            Err(error) => {
+                tracing::warn!(%error, file = %path.display(), "uszkodzony plik presetów");
+                self.report_unreadable(PRESETS_FILE, Some(&raw)).await;
+                Err(AppError::new("presets.readFailed"))
+            }
+        }
     }
 
     /// Zapisuje presety szybkich akcji atomowo.
@@ -114,29 +241,54 @@ impl Store {
         self.write_json(SESSION_FILE, &tabs.to_vec()).await
     }
 
-    /// Odczyt z odzyskiwaniem: brak pliku to nie błąd, uszkodzony plik logujemy.
+    /// Odczyt z odzyskiwaniem: brak pliku to nie błąd, uszkodzony plik logujemy,
+    /// zostawiamy obok kopię i wstrzymujemy zapis do niego.
     async fn read_or_default<T: DeserializeOwned>(&self, file: &str, default: fn() -> T) -> T {
-        let path = self.root.join(file);
-        let raw = match tokio::fs::read_to_string(&path).await {
-            Ok(raw) => raw,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return default(),
+        let raw = match self.read_file(file).await {
+            Ok(Some(raw)) => raw,
+            Ok(None) => return default(),
             Err(error) => {
-                tracing::warn!(%error, file = %path.display(), "nie udało się odczytać pliku");
+                tracing::warn!(%error, file = %self.root.join(file).display(), "nie udało się odczytać pliku");
+                self.report_unreadable(file, None).await;
                 return default();
             }
         };
 
         match serde_json::from_str(&raw) {
-            Ok(value) => value,
+            Ok(value) => {
+                self.clear_issue(file);
+                value
+            }
             Err(error) => {
-                tracing::warn!(%error, file = %path.display(), "uszkodzony plik JSON; używam wartości domyślnych");
+                tracing::warn!(%error, file = %self.root.join(file).display(), "uszkodzony plik JSON; zostawiam kopię i nie nadpisuję pliku");
+                self.report_unreadable(file, Some(&raw)).await;
                 default()
             }
         }
     }
 
+    /// Czyta plik jako tekst: `Ok(None)` oznacza brak pliku, `Err` inny błąd.
+    async fn read_file(&self, file: &str) -> Result<Option<String>, std::io::Error> {
+        match tokio::fs::read_to_string(self.root.join(file)).await {
+            Ok(raw) => Ok(Some(raw)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Atomowy zapis JSON: najpierw plik tymczasowy, potem podmiana.
+    ///
+    /// Zapis do pliku, którego nie udało się wczytać, jest **wstrzymany** (R-10):
+    /// inaczej pierwszy zapis zastąpiłby dane użytkownika wartościami domyślnymi.
     async fn write_json<T: Serialize>(&self, file: &str, value: &T) -> Result<(), AppError> {
+        if self.write_blocked(file) {
+            tracing::warn!(file, "zapis wstrzymany: plik nie wczytał się poprawnie");
+            return Err(AppError::with_params(
+                "store.fileQuarantined",
+                json!({ "file": file }),
+            ));
+        }
+
         let path = self.root.join(file);
         let json = serde_json::to_string_pretty(value).map_err(|error| {
             tracing::error!(%error, file = %path.display(), "nie udało się zserializować danych");
@@ -153,7 +305,116 @@ impl Store {
             let _ = tokio::fs::remove_file(&temp).await;
             return Err(AppError::new("store.writeFailed"));
         }
+
+        // Na dysku jest teraz poprawny plik, więc blokada nie jest już potrzebna.
+        self.clear_issue(file);
         Ok(())
+    }
+
+    /// Reakcja na nieczytelny plik: kopia obok, blokada zapisu i ostrzeżenie w UI.
+    async fn report_unreadable(&self, file: &str, content: Option<&str>) {
+        if !self.note_issue(file, true) {
+            return;
+        }
+        self.backup_file(file, content).await;
+        self.push_warning("store.fileUnreadable", json!({ "file": file }));
+    }
+
+    /// Reakcja na wpisy pominięte przy odczycie listy (R-16).
+    ///
+    /// Zapis nie jest blokowany - dobre wpisy są na dysku i można je utrwalić -
+    /// ale plik z pominiętymi wpisami zapisujemy obok, żeby nic nie zginęło.
+    async fn report_skipped(&self, file: &str, count: usize, content: &str) {
+        if !self.note_issue(file, false) {
+            return;
+        }
+        self.backup_file(file, Some(content)).await;
+        self.push_warning(
+            "store.entriesSkipped",
+            json!({ "file": file, "count": count }),
+        );
+    }
+
+    /// Zapisuje kopię pliku obok: `<nazwa>.bad-<RRRR-MM-DD-HHMMSS>`.
+    ///
+    /// Treść bierzemy z pamięci, jeśli ją mamy (przy nieczytelnym pliku czytamy
+    /// go ponownie), więc kopia jest dokładnie tym, co leżało na dysku.
+    async fn backup_file(&self, file: &str, content: Option<&str>) {
+        let path = self.root.join(file);
+        let now = crate::chatlog::local_now();
+        let name = format!("{file}.bad-{}-{}", now.date(), now.time().replace(':', ""));
+        let target = self.root.join(&name);
+
+        let result = match content {
+            Some(raw) => tokio::fs::write(&target, raw.as_bytes()).await,
+            None => tokio::fs::copy(&path, &target).await.map(|_| ()),
+        };
+
+        match result {
+            Ok(()) => tracing::warn!(
+                file,
+                backup = %target.display(),
+                "kopia danych, których nie dało się wczytać"
+            ),
+            Err(error) => tracing::error!(
+                %error,
+                file,
+                backup = %target.display(),
+                "nie udało się zapisać kopii danych, których nie dało się wczytać"
+            ),
+        }
+    }
+
+    /// Zapisuje problem z plikiem. Zwraca `true`, jeśli to pierwsze zgłoszenie
+    /// w tym uruchomieniu (czyli trzeba zrobić kopię i pokazać ostrzeżenie).
+    fn note_issue(&self, file: &str, blocks_writes: bool) -> bool {
+        let mut issues = self
+            .issues
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let issue = issues.entry(file.to_string()).or_insert(FileIssue {
+            blocks_writes: false,
+            reported: false,
+        });
+        issue.blocks_writes |= blocks_writes;
+        if issue.reported {
+            return false;
+        }
+        issue.reported = true;
+        true
+    }
+
+    /// Udany odczyt (albo zapis) zdejmuje blokadę zapisu.
+    fn clear_issue(&self, file: &str) {
+        let mut issues = self
+            .issues
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        issues.remove(file);
+    }
+
+    /// Czy zapis do pliku jest wstrzymany po nieudanym odczycie.
+    fn write_blocked(&self, file: &str) -> bool {
+        let issues = self
+            .issues
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        issues
+            .get(file)
+            .map(|issue| issue.blocks_writes)
+            .unwrap_or(false)
+    }
+
+    /// Kolejkuje ostrzeżenie dla UI.
+    fn push_warning(&self, code: &str, params: serde_json::Value) {
+        let mut warnings = self
+            .warnings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        warnings.push(StoreWarning {
+            code: code.to_string(),
+            params,
+        });
     }
 }
 
@@ -185,12 +446,30 @@ mod tests {
         }
     }
 
+    /// Pliki kopii zapasowych (`*.bad-*`) w katalogu danych.
+    fn backups(root: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(root)
+            .expect("odczyt katalogu")
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".bad-"))
+            .collect();
+        names.sort();
+        names
+    }
+
     #[tokio::test]
     async fn missing_files_yield_defaults() {
         let root = temp_root("missing");
         let store = Store::new(root);
         assert_eq!(store.load_settings().await, AppSettings::default());
         assert!(store.load_accounts().await.is_empty());
+        // Brak pliku to nie problem: nic nie blokujemy i nie ostrzegamy.
+        assert!(store.take_warnings().is_empty());
+        store
+            .save_accounts(&[sample_account()])
+            .await
+            .expect("zapis kont bez wcześniejszego odczytu");
     }
 
     #[tokio::test]
@@ -295,6 +574,170 @@ mod tests {
         std::fs::write(root.join(SETTINGS_FILE), b"{ not json").expect("zapis uszkodzonego pliku");
         let store = Store::new(root);
         assert_eq!(store.load_settings().await, AppSettings::default());
+    }
+
+    #[tokio::test]
+    async fn bad_entry_does_not_take_the_whole_accounts_list_down() {
+        let root = temp_root("accounts-partial");
+        // Drugi wpis nie ma loginu, więc nie da się go wczytać.
+        let json = r#"[
+            {"id":"acc-1","label":"Main","type":"microsoft","login":"a@b.c","servers":[],"tabOrder":0},
+            {"id":"acc-2","type":"offline"}
+        ]"#;
+        std::fs::write(root.join(ACCOUNTS_FILE), json).expect("zapis kont");
+        let store = Store::new(root.clone());
+
+        let accounts = store.load_accounts().await;
+
+        // Reszta listy zostaje, a o pominietym wpisie informujemy UI.
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].id, "acc-1");
+        let warnings = store.take_warnings();
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].code, "store.entriesSkipped");
+        assert_eq!(warnings[0].params["file"], ACCOUNTS_FILE);
+        assert_eq!(warnings[0].params["count"], 1);
+        // Kopia pliku z pominiętym wpisem zostaje obok.
+        assert_eq!(backups(&root).len(), 1);
+        // Dobry wpis można utrwalić - zapis nie jest wstrzymany.
+        store.save_accounts(&accounts).await.expect("zapis kont");
+    }
+
+    #[tokio::test]
+    async fn invalid_entry_is_dropped_and_counted() {
+        let root = temp_root("accounts-invalid");
+        // Identyfikator ze separatorem ścieżki (R-01) nie może trafić do panelu.
+        let json = r#"[
+            {"id":"../evil","label":"Zlo","type":"offline","login":"bot","servers":[],"tabOrder":0}
+        ]"#;
+        std::fs::write(root.join(ACCOUNTS_FILE), json).expect("zapis kont");
+        let store = Store::new(root);
+
+        assert!(store.load_accounts().await.is_empty());
+        assert_eq!(store.take_warnings()[0].code, "store.entriesSkipped");
+    }
+
+    #[tokio::test]
+    async fn one_bad_entry_is_reported_only_once() {
+        let root = temp_root("accounts-partial-twice");
+        std::fs::write(
+            root.join(ACCOUNTS_FILE),
+            r#"[
+                {"id":"acc-1","label":"Main","type":"microsoft","login":"a@b.c","servers":[],"tabOrder":0},
+                {"id":"acc-2","type":"offline"}
+            ]"#,
+        )
+        .expect("zapis kont");
+        let store = Store::new(root.clone());
+
+        // Start czyta konta dwa razy (panel kont i zakładki sesji) - kopia
+        // i ostrzeżenie mają powstać raz.
+        assert_eq!(store.load_accounts().await.len(), 1);
+        assert_eq!(store.load_accounts().await.len(), 1);
+
+        assert_eq!(store.take_warnings().len(), 1);
+        assert_eq!(backups(&root).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn unreadable_file_is_kept_and_its_write_is_paused() {
+        let root = temp_root("accounts-quarantine");
+        let broken = b"[ { oops".to_vec();
+        std::fs::write(root.join(ACCOUNTS_FILE), &broken).expect("zapis uszkodzonego pliku");
+        let store = Store::new(root.clone());
+
+        assert!(store.load_accounts().await.is_empty());
+        let warnings = store.take_warnings();
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].code, "store.fileUnreadable");
+        assert_eq!(warnings[0].params["file"], ACCOUNTS_FILE);
+        assert_eq!(backups(&root).len(), 1);
+
+        // Zapis nie nadpisuje tego, czego nie umieliśmy odczytać.
+        let error = store
+            .save_accounts(&[sample_account()])
+            .await
+            .expect_err("zapis do nieczytelnego pliku ma być wstrzymany");
+        assert_eq!(error.code, "store.fileQuarantined");
+        assert_eq!(error.params["file"], ACCOUNTS_FILE);
+        assert_eq!(
+            std::fs::read(root.join(ACCOUNTS_FILE)).expect("odczyt pliku"),
+            broken,
+            "zawartość pliku nie może się zmienić"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_successful_read_lifts_the_write_block() {
+        let root = temp_root("accounts-fixed");
+        std::fs::write(root.join(ACCOUNTS_FILE), b"{ oops").expect("zapis uszkodzonego pliku");
+        let store = Store::new(root.clone());
+        assert!(store.load_accounts().await.is_empty());
+        assert!(
+            store
+                .save_accounts(&[sample_account()])
+                .await
+                .expect_err("zapis wstrzymany")
+                .code
+                .eq("store.fileQuarantined")
+        );
+
+        // Użytkownik poprawił plik - udany odczyt zdejmuje blokadę.
+        std::fs::write(root.join(ACCOUNTS_FILE), b"[]").expect("poprawiony plik");
+        assert!(store.load_accounts().await.is_empty());
+        store
+            .save_accounts(&[sample_account()])
+            .await
+            .expect("zapis po poprawieniu pliku");
+    }
+
+    #[tokio::test]
+    async fn broken_settings_file_is_not_overwritten_by_defaults() {
+        let root = temp_root("settings-quarantine");
+        let broken = b"{ not json".to_vec();
+        std::fs::write(root.join(SETTINGS_FILE), &broken).expect("zapis uszkodzonego pliku");
+        let store = Store::new(root.clone());
+
+        assert_eq!(store.load_settings().await, AppSettings::default());
+        assert_eq!(store.take_warnings()[0].code, "store.fileUnreadable");
+
+        let error = store
+            .save_settings(&AppSettings::default())
+            .await
+            .expect_err("zapis do nieczytelnego pliku ma być wstrzymany");
+        assert_eq!(error.code, "store.fileQuarantined");
+        assert_eq!(
+            std::fs::read(root.join(SETTINGS_FILE)).expect("odczyt pliku"),
+            broken
+        );
+    }
+
+    #[tokio::test]
+    async fn fixing_presets_with_reload_lifts_the_block() {
+        let root = temp_root("presets-quarantine");
+        std::fs::write(root.join(PRESETS_FILE), b"[ { oops").expect("zapis uszkodzonego pliku");
+        let store = Store::new(root.clone());
+
+        assert!(store.load_presets().await.is_empty());
+        assert!(
+            store
+                .save_presets(&[])
+                .await
+                .expect_err("zapis wstrzymany")
+                .code
+                .eq("store.fileQuarantined")
+        );
+
+        // `Reload` po poprawieniu pliku jest drogą naprawy bez restartu.
+        std::fs::write(root.join(PRESETS_FILE), b"[]").expect("poprawiony plik");
+        assert!(
+            store
+                .reload_presets()
+                .await
+                .expect("udany odczyt")
+                .is_empty()
+        );
+        store.save_presets(&[]).await.expect("zapis po naprawie");
     }
 
     #[tokio::test]

@@ -197,7 +197,10 @@
       "retentionOutOfRange": "Logi czatu można przechowywać od 0 do {max} dni."
     },
     "store": {
-      "writeFailed": "Nie udało się zapisać pliku ustawień."
+      "writeFailed": "Nie udało się zapisać pliku ustawień.",
+      "fileUnreadable": "Nie udało się odczytać pliku {file}, więc obok została kopia z końcówką .bad-… (jeśli dało się ją zapisać). Aplikacja nie nadpisze tego pliku - popraw go albo usuń i uruchom aplikację ponownie.",
+      "fileQuarantined": "Nie zapisuję pliku {file}: nie udało się go odczytać przy starcie, a aplikacja nie zastąpi go pustymi danymi. Popraw plik albo usuń go i uruchom aplikację ponownie.",
+      "entriesSkipped": "Pominięto {count} wpis w pliku {file}, którego nie dało się odczytać | Pominięto {count} wpisy w pliku {file}, których nie dało się odczytać | Pominięto {count} wpisów w pliku {file}, których nie dało się odczytać"
     },
     "dialog": {
       "failed": "Nie udało się otworzyć okna wyboru pliku."

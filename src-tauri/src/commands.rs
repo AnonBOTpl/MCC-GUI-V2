@@ -126,6 +126,26 @@ pub struct AppState {
     pub close_confirmed: AtomicBool,
 }
 
+/// Pokazuje w UI ostrzeżenia o plikach danych, które nie wczytały się w całości.
+///
+/// Rust czyta pliki przy starcie, czyli **zanim** okno zdąży podłączyć nasłuchy,
+/// więc ostrzeżenia (np. o pominiętych wpisach w `accounts.json`) czekają
+/// w store i wysyłamy je przy pierwszej komendzie wołanej z frontendu. Wysyłamy
+/// je tą samą drogą co błędy (`app://error`), bo to ta sama forma: kod + parametry.
+fn flush_store_warnings(app: &AppHandle, store: &Store) {
+    for warning in store.take_warnings() {
+        if let Err(error) = app.emit(
+            "app://error",
+            ErrorPayload {
+                code: warning.code,
+                params: warning.params,
+            },
+        ) {
+            tracing::warn!(%error, "nie udało się pokazać ostrzeżenia o pliku danych");
+        }
+    }
+}
+
 /// Zwraca efektywny folder logów czatu (własny użytkownika albo domyślny).
 #[tauri::command]
 pub async fn chat_log_dir(state: State<'_, AppState>) -> Result<String, AppError> {
@@ -248,7 +268,11 @@ pub async fn copy_text(app: AppHandle, text: String) -> Result<(), AppError> {
 
 /// Zwraca bieżące ustawienia aplikacji.
 #[tauri::command]
-pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, AppError> {
+pub async fn get_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AppSettings, AppError> {
+    flush_store_warnings(&app, &state.store);
     Ok(state.settings.lock().await.clone())
 }
 
@@ -305,8 +329,13 @@ pub async fn pick_mcc_executable(app: AppHandle) -> Result<Option<String>, AppEr
 /// Start jest łagodny: brak pliku to po prostu pusta lista, a ręcznie zepsuty
 /// plik logujemy i zwracamy pustą listę, żeby aplikacja zawsze wystartowała.
 #[tauri::command]
-pub async fn list_presets(state: State<'_, AppState>) -> Result<Vec<Preset>, AppError> {
-    Ok(state.store.load_presets().await)
+pub async fn list_presets(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<Preset>, AppError> {
+    let presets = state.store.load_presets().await;
+    flush_store_warnings(&app, &state.store);
+    Ok(presets)
 }
 
 /// Zapisuje presety: waliduje listę i utrwala ją atomowo. Zwraca wersję
@@ -332,10 +361,14 @@ pub async fn reload_presets(state: State<'_, AppState>) -> Result<Vec<Preset>, A
 /// Zwraca konta zapisane w `accounts.json` (bez uruchamiania procesów).
 /// Używane przy starcie aplikacji (Etap 4).
 #[tauri::command]
-pub async fn list_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, AppError> {
+pub async fn list_accounts(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<Account>, AppError> {
     let accounts = state.store.load_accounts().await;
     // Etykiety kont tworzą nazwy katalogów w folderze logów czatu.
     state.chat_log.set_account_labels(&accounts);
+    flush_store_warnings(&app, &state.store);
     Ok(accounts)
 }
 
@@ -456,9 +489,13 @@ pub async fn send_input_all(
 /// zostać usunięte, a serwer skasowany, więc plik sesji jest danymi wejściowymi
 /// jak każde inne - walidacja wejścia należy do Rusta.
 #[tauri::command]
-pub async fn get_open_tabs(state: State<'_, AppState>) -> Result<Vec<OpenTab>, AppError> {
+pub async fn get_open_tabs(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<OpenTab>, AppError> {
     let tabs = state.store.load_session().await;
     let accounts = state.store.load_accounts().await;
+    flush_store_warnings(&app, &state.store);
     let (kept, dropped) = session::sanitize_open_tabs(tabs, &accounts);
     if dropped > 0 {
         tracing::warn!(dropped, "sesja: pominięto zakładki bez konta albo serwera");

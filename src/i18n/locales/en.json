@@ -197,7 +197,10 @@
       "retentionOutOfRange": "Chat logs must be kept between 0 and {max} days."
     },
     "store": {
-      "writeFailed": "Could not save the settings file."
+      "writeFailed": "Could not save the settings file.",
+      "fileUnreadable": "Could not read {file}, so a copy ending in .bad-… was kept next to it (if it could be saved). The app will not overwrite this file - fix it or delete it and restart the app.",
+      "fileQuarantined": "Not saving {file}: it could not be read when the app started, and the app will not replace it with empty data. Fix the file or delete it and restart the app.",
+      "entriesSkipped": "Skipped {count} entry in {file} that could not be read | Skipped {count} entries in {file} that could not be read"
     },
     "dialog": {
       "failed": "Could not open the file picker."
