@@ -15,8 +15,10 @@
 //!
 //! - `FAKE_MCC_SPAM` - ile linii na sekundę wypisywać (0 = wyłączone),
 //! - `FAKE_MCC_SPAM_SECONDS` - jak długo (domyślnie 60),
-//! - `FAKE_MCC_PROMPT` - po starcie wypisz prompt logowania Microsoft (Etap 3),
-//!   a po `join` zdanie o udanym połączeniu (symuluje logowanie urządzenia).
+//! - wyzwalacze w katalogu roboczym konta: plik `fake-prompt` wypisuje prompt
+//!   logowania Microsoft w jednej linii (Etap 3), a `fake-prompt-split` - w dwóch
+//!   (wariant R-36, pokazuje, że wykrywanie per linia go nie łapie). Po `join`
+//!   leci zdanie o udanym połączeniu.
 
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
@@ -64,6 +66,22 @@ fn main() {
             out,
             "To sign in, open https://www.microsoft.com/link in your browser and enter the code: §e7FRBLM2Y"
         );
+        let _ = writeln!(out, "Waiting for authentication to complete...");
+        let _ = out.flush();
+    }
+
+    // Wariant R-36: prompt rozbity na **dwie** linie (tak, jak wyglądałby, gdyby
+    // MCC wypisał link i kod osobno). Wykrywanie działa na jednej linii, więc ten
+    // wariant pokazuje, że banner się wtedy nie pojawia. Wyzwalaczem jest plik,
+    // z tego samego powodu co `fake-prompt`.
+    if std::path::Path::new("fake-prompt-split").exists() {
+        let mut out = stdout.lock();
+        let _ = writeln!(out, "Connecting to Microsoft...");
+        let _ = writeln!(
+            out,
+            "To sign in, open https://www.microsoft.com/link in your browser"
+        );
+        let _ = writeln!(out, "and enter the code: §e7FRBLM2Y");
         let _ = writeln!(out, "Waiting for authentication to complete...");
         let _ = out.flush();
     }

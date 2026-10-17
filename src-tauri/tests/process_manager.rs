@@ -719,6 +719,63 @@ async fn device_code_prompt_switches_to_awaiting_login() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// R-36: wariant „prompt w dwóch liniach”. `fake-prompt-split` wypisuje link i kod
+/// osobno, tak jak wyglądałby prompt rozbity przez MCC. Wykrywanie pracuje na
+/// jednej linii, więc tu **nie ma** zdarzenia z kodem i status nie przechodzi
+/// w `awaiting_login` - test utrwala ten znany wariant, żeby nikt nie uznał go
+/// za działający (symulacja w prawdziwym oknie 2026-10-17 dała ten sam wynik).
+#[tokio::test]
+async fn split_prompt_lines_do_not_produce_a_login_event() {
+    let (collector, dir, manager) = started_manager().await;
+    manager
+        .add_account(account("a", &[]))
+        .await
+        .expect("dodanie konta");
+    manager
+        .add_server("a", SERVER, None)
+        .await
+        .expect("dodanie serwera");
+    std::fs::write(dir.join("a").join("fake-prompt-split"), b"1").expect("wyzwalacz promptu");
+    manager
+        .start_connection("a", SERVER)
+        .await
+        .expect("start połączenia");
+
+    // Obie połówki promptu dochodzą jako osobne linie...
+    assert!(
+        wait_for(
+            &collector,
+            |events| has_line(
+                events,
+                "To sign in, open https://www.microsoft.com/link in your browser"
+            ),
+            Duration::from_secs(5)
+        )
+        .await,
+        "brak pierwszej linii promptu"
+    );
+
+    // ...ale żadna z nich nie jest kompletnym promptem.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let events = collector.snapshot();
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, Event::DeviceCode { .. })),
+        "dwuliniowy prompt nie może dawać zdarzenia z kodem (R-36)"
+    );
+    assert!(
+        !status_events(&events).contains(&AccountStatus::AwaitingLogin),
+        "status nie może przejść w awaiting_login"
+    );
+
+    manager
+        .stop_connection(&conn("a", SERVER))
+        .await
+        .expect("zatrzymanie");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn join_returns_to_running_after_login() {
     let (collector, dir, manager) = started_manager().await;
