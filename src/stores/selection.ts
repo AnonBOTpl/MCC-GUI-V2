@@ -67,6 +67,20 @@ export const useSelectionStore = defineStore('selection', () => {
     clearSelection(forConnection(connectionId))
   }
 
+  /**
+   * Usuwa cały stan zaznaczenia połączenia - wołane, gdy zakładka znika (R-41).
+   * `clear` zostawiłoby pusty wpis w mapie, a ten rośnie z każdym otwartym
+   * i zamkniętym połączeniem.
+   */
+  function drop(connectionId: string): void {
+    states.value.delete(connectionId)
+  }
+
+  /** Czy połączenie ma zapisany jakikolwiek stan zaznaczenia. */
+  function has(connectionId: string): boolean {
+    return states.value.has(connectionId)
+  }
+
   function sizeFor(connectionId: string): number {
     return selectionSize(forConnection(connectionId))
   }
@@ -83,6 +97,8 @@ export const useSelectionStore = defineStore('selection', () => {
     addRangeFromAnchor,
     selectAll,
     clear,
+    drop,
+    has,
     sizeFor,
     isEmpty,
   }

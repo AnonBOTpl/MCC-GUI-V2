@@ -44,12 +44,22 @@ fn init_tracing() {
     let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
 }
 
-/// Wyznacza ścieżkę do `MinecraftClient.exe`.
-///
-/// Kolejność: najpierw ścieżka zapisana w ustawieniach (wybrana w UI), a jeśli
-/// jej nie ma albo jest nieaktualna - zmienna `MCC_EXECUTABLE`, która została
-/// jako wygodny fallback deweloperski.
+/// Wyznacza ścieżkę do `MinecraftClient.exe`: wyłącznie z ustawień.
 fn resolve_mcc_exe(settings: &AppSettings) -> Option<PathBuf> {
+    resolve_mcc_exe_with(settings, |name| std::env::var(name).ok())
+}
+
+/// Sedno [`resolve_mcc_exe`] z wstrzykiwanym odczytem środowiska (do testów).
+///
+/// Kolejność: ścieżka zapisana w ustawieniach (wybrana w UI), a jeśli jej nie ma
+/// albo jest nieaktualna - zmienna `MCC_EXECUTABLE` (R-33). Ta zmienna to
+/// **fallback deweloperski** ustawiany przez `run-dev.bat`, więc w wersji wydanej
+/// jest wyłączony: użytkownik instalatora ma wskazać plik w ustawieniach, a nie
+/// dziedziczyć ścieżkę ze środowiska.
+fn resolve_mcc_exe_with(
+    settings: &AppSettings,
+    read_env: impl Fn(&str) -> Option<String>,
+) -> Option<PathBuf> {
     if let Some(saved) = settings.mcc_path.as_deref() {
         match settings::validate_mcc_path(saved) {
             Ok(path) => return Some(path),
@@ -59,8 +69,11 @@ fn resolve_mcc_exe(settings: &AppSettings) -> Option<PathBuf> {
         }
     }
 
-    std::env::var("MCC_EXECUTABLE")
-        .ok()
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+
+    read_env("MCC_EXECUTABLE")
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
 }
@@ -269,4 +282,64 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("nie udało się uruchomić aplikacji Tauri");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ścieżka do pliku `.exe`, który naprawdę istnieje.
+    ///
+    /// Walidacja wymaga pliku o rozszerzeniu `.exe`, więc atrapa musi być na dysku.
+    fn temp_exe(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mcc-lib-{}-{tag}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("katalog testowy");
+        let path = dir.join("MinecraftClient.exe");
+        std::fs::write(&path, b"").expect("plik testowy");
+        path
+    }
+
+    #[test]
+    fn settings_path_wins_over_the_environment() {
+        let saved = temp_exe("saved");
+        let settings = AppSettings {
+            mcc_path: Some(saved.to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+
+        let resolved = resolve_mcc_exe_with(&settings, |_| {
+            Some(temp_exe("env").to_string_lossy().into_owned())
+        });
+
+        assert_eq!(resolved, Some(saved));
+    }
+
+    #[test]
+    fn env_fallback_is_development_only() {
+        // Bez zapisanej ścieżki zostaje tylko zmienna środowiskowa - i wolno jej
+        // użyć **wyłącznie** w buildzie deweloperskim. Ten sam kod idzie w testach
+        // wydania, więc `cargo test --release` sprawdza bramkę.
+        let settings = AppSettings::default();
+        let from_env = temp_exe("fallback");
+
+        let resolved = resolve_mcc_exe_with(&settings, |name| {
+            assert_eq!(name, "MCC_EXECUTABLE");
+            Some(from_env.to_string_lossy().into_owned())
+        });
+
+        assert_eq!(
+            resolved.is_some(),
+            cfg!(debug_assertions),
+            "fallback MCC_EXECUTABLE ma działać tylko w buildzie deweloperskim"
+        );
+    }
+
+    #[test]
+    fn empty_env_value_is_not_a_path() {
+        let settings = AppSettings::default();
+
+        let resolved = resolve_mcc_exe_with(&settings, |_| Some("   ".into()));
+
+        assert!(resolved.is_none());
+    }
 }

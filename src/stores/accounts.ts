@@ -34,6 +34,7 @@ import {
 import { diagCounters } from '../log/diag'
 import { connectionsToTabs, tabsToConnections } from '../session/tabs'
 import { useLogsStore } from './logs'
+import { useSelectionStore } from './selection'
 
 /** Zdarzenie błędu z czasem odbioru - do wyświetlenia w UI i auto-ukrycia. */
 export interface AppErrorEvent extends ErrorPayload {
@@ -197,6 +198,8 @@ export const useAccountsStore = defineStore('accounts', () => {
       }
     }
     logs.remove(id)
+    // Zakładka znika, więc stan zaznaczenia jej wierszy nie ma już właściciela (R-41).
+    useSelectionStore().drop(id)
     const nextStatuses = { ...statuses.value }
     delete nextStatuses[id]
     statuses.value = nextStatuses
@@ -418,17 +421,25 @@ export const useAccountsStore = defineStore('accounts', () => {
     }
   }
 
-  /** Zamyka zakładkę połączenia i zatrzymuje proces (serwer zostaje zapisany). */
+  /**
+   * Zamyka zakładkę połączenia i zatrzymuje proces (serwer zostaje zapisany).
+   *
+   * Najpierw zatrzymujemy proces, dopiero potem usuwamy zakładkę z UI (R-18):
+   * gdyby start był jeszcze w drodze, usunięcie zakładki zostawiłoby działający
+   * proces bez okna (i bez sposobu, żeby go zatrzymać). Przy nieudanym stopie
+   * zakładka zostaje, żeby dało się spróbować ponownie albo zamknąć aplikację.
+   */
   async function closeConnection(id: string): Promise<void> {
     const conn = connections.value.find((item) => item.id === id)
     if (!conn) return
-    dropConnectionLocally(id)
-    void persistOpenTabs()
     try {
       await backend.stopConnection(id)
     } catch (error) {
       pushError(error as ErrorPayload)
+      return
     }
+    dropConnectionLocally(id)
+    void persistOpenTabs()
   }
 
   /** Startuje zatrzymane połączenie (przycisk „Uruchom" w nagłówku). */

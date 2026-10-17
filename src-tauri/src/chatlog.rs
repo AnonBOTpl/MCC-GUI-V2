@@ -385,11 +385,36 @@ pub fn expired_logs(root: &Path, today: (i64, u32, u32), retention_days: u32) ->
     expired
 }
 
-/// Czy pod ścieżką jest katalog (błąd odczytu traktujemy jak „nie”).
+/// Czy pod ścieżką jest **zwykły** katalog (błąd odczytu traktujemy jak „nie”).
+///
+/// Idziemy przez `symlink_metadata`, więc nie podążamy za dowiązaniami ani
+/// junctionami: inaczej sprzątanie wyszłoby poza katalog logów i usunęło pliki
+/// `RRRR-MM-DD.log` zupełnie gdzie indziej (R-11). Reparse point to dla nas
+/// „nie katalog” - sprzątanie jest wtedy konserwatywne, nigdy agresywne.
 fn is_dir(path: &Path) -> bool {
-    std::fs::metadata(path)
-        .map(|meta| meta.is_dir())
-        .unwrap_or(false)
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    meta.is_dir() && !is_reparse_point(&meta)
+}
+
+/// Czy metadane wskazują na reparse point (dowiązanie symboliczne albo junction).
+///
+/// Na Windows każdy reparse point ma odpowiedni atrybut; poza Windows sprawdzamy
+/// zwykłe dowiązanie symboliczne.
+#[cfg(windows)]
+fn is_reparse_point(meta: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+
+    /// `FILE_ATTRIBUTE_REPARSE_POINT` - wspólny znacznik dowiązań i junctionów.
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+
+    meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_reparse_point(meta: &std::fs::Metadata) -> bool {
+    meta.file_type().is_symlink()
 }
 
 /// Usuwa przedawnione pliki logów. Zwraca liczbę usuniętych plików.
@@ -1129,6 +1154,63 @@ mod tests {
         assert!(old.exists());
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Tworzy junction (`mklink /J`) - nie wymaga uprawnień administratora.
+    ///
+    /// Zwraca `false`, gdy system nie pozwolił na utworzenie dowiązania.
+    #[cfg(windows)]
+    fn make_junction(link: &Path, target: &Path) -> bool {
+        std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn retention_does_not_follow_junctions_outside_the_log_root() {
+        let root = temp_root("retention-junction");
+        // Dwa katalogi poza folderem logów: jeden udaje konto, drugi serwer.
+        let outside_account = temp_root("retention-outside-account").join("Bot");
+        let outside_server = temp_root("retention-outside-server");
+        std::fs::create_dir_all(&outside_account).expect("katalog poza rootem");
+        std::fs::create_dir_all(&outside_server).expect("katalog poza rootem");
+        let victim_account = outside_account.join("2000-01-01.log");
+        let victim_server = outside_server.join("2000-01-01.log");
+        for victim in [&victim_account, &victim_server] {
+            std::fs::write(victim, b"keep").expect("plik poza rootem");
+        }
+
+        // Junction na poziomie konta i na poziomie serwera.
+        let server_dir = root.join("play.example.com_25565");
+        std::fs::create_dir_all(&server_dir).expect("katalog serwera");
+        let account_link = server_dir.join("Bot");
+        let server_link = root.join("linked.example.com_25565");
+        if !make_junction(&account_link, &outside_account)
+            || !make_junction(&server_link, &outside_server)
+        {
+            eprintln!("pomijam: system nie pozwolił utworzyć junctionów");
+            let _ = std::fs::remove_dir_all(&root);
+            return;
+        }
+
+        // Sprzątanie nie może wejść za junction i usunąć plików poza folderem logów.
+        assert!(expired_logs(&root, (2026, 10, 16), 30).is_empty());
+        assert_eq!(purge_expired(&root, (2026, 10, 16), 30), 0);
+        assert!(victim_account.exists(), "plik poza rootem ma zostać");
+        assert!(victim_server.exists(), "plik poza rootem ma zostać");
+
+        // Junction usuwamy jak zwykły katalog - `remove_dir_all` na dowiązaniu
+        // mogłoby wejść do celu.
+        let _ = std::fs::remove_dir(&account_link);
+        let _ = std::fs::remove_dir(&server_link);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(outside_account.parent().expect("katalog"));
+        let _ = std::fs::remove_dir_all(&outside_server);
     }
 
     #[test]

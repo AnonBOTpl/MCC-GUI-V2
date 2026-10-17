@@ -4,7 +4,60 @@ All notable changes to MCC GUI V2. Dates are the days the work happened, newest 
 
 Version **2.0.0 has not been released yet**. The installer carrying that number on disk was
 built during development, so it has to be built again before a release — otherwise it will
-not contain everything listed below.
+not contain everything listed below. None of the 17 October changes is in any installer yet.
+
+## 17 October 2026
+
+A review of the whole app (input handling, files on disk, dialogs, process lifetime) turned up
+several defects. All of them are fixed below.
+
+**Fixed**
+
+- **A damaged `accounts.json` no longer wipes every account.** The file is read entry by
+  entry, so one broken account is skipped and the rest load normally. The app says how many
+  entries it skipped and keeps a copy of the damaged file (name ending in `.bad-…`) next to it,
+  instead of turning the whole list into an empty one that the next save would then write down.
+- **Files that cannot be read are no longer overwritten.** If `accounts.json`, `settings.json`,
+  `presets.json` or `session.json` cannot be read when the app starts, a message explains what
+  happened, a copy ending in `.bad-…` is kept next to the file, and saving that file is paused
+  until it reads correctly again (for presets that is: fix the file and press Reload). Before,
+  the first save silently replaced the file with empty defaults.
+- **Closing a tab now waits for the process to stop.** Closing a tab right after starting a
+  connection could leave `MinecraftClient.exe` running with no tab left to control it. The tab
+  stays visible while the client shuts down, and if stopping fails the tab stays with a message
+  instead of disappearing.
+- **Starting the same connection twice no longer opens two clients.** A second click while the
+  first start was still in flight could leave two `MinecraftClient.exe` processes for one tab
+  (and a false “crashed” status when one of them exited).
+- **A client that stops reading its input can no longer freeze the app or block stopping it.**
+  Sending input and stopping no longer wait on a global lock, and a write that the client never
+  reads gives up after a timeout.
+- **Double-clicking a Start button no longer connects and immediately disconnects.** The second
+  click of a double click is ignored: the button changes under the cursor after the first click,
+  so it used to hit a different action (disconnect in the panel, reconnect in the tab).
+- **The dialogs are proper dialogs for the keyboard.** Add account, Settings, the closing
+  question and the quick-action editor now keep `Tab` inside themselves, close with `Esc`,
+  keep the focus in the right field when they open, and give focus back to the button that
+  opened them. Before, `Tab` walked into the window behind the dialog.
+- **The collapsed quick-action bar is out of the keyboard order** — hidden presets can no
+  longer be reached (and sent) with `Tab` and `Enter`. Before, pressing `Tab` a few times while
+typing could send an action that was not visible on screen.
+- **Chat-log cleanup no longer follows links.** A junction (link) inside the log folder can no
+  longer make the app delete old `YYYY-MM-DD.log` files outside that folder.
+- **A closed tab no longer leaves its line selection behind.**
+- **The Settings dialog scrolls** when the window is short, so the Save button stays reachable
+  (it used to be pushed off screen).
+
+**Changed**
+
+- **Account data is validated before it is used.** An account id with a path separator, a login
+  with a control character or a server address that would break the generated client settings
+  are rejected — whether they come from the panel or from a hand-edited file.
+- **Only Microsoft-hosted login links can be opened.** A line in chat that merely looks like a
+  login prompt can no longer turn into a clickable link to some other site.
+- **`MCC_EXECUTABLE` is a development-only fallback.** Installed builds take the path from
+  Settings only, so an environment variable can no longer point a released build at some other
+  program.
 
 ## 16 October 2026
 

@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { backend } from '../api/backend'
 import type { Account, OpenTab } from '../api/contract'
 import { useAccountsStore } from './accounts'
+import { useSelectionStore } from './selection'
 
 // Backend podmieniamy w całości: te testy sprawdzają logikę store'u, a nie Tauri.
 vi.mock('../api/backend', () => ({
@@ -123,6 +124,57 @@ describe('store kont - sesja zakładek', () => {
     expect(backend.saveOpenTabs).toHaveBeenCalledWith([
       { accountId: 'acc-1', server: 'play.example.com' },
     ])
+  })
+
+  it('zamyka zakładkę dopiero po zatrzymaniu procesu (R-18)', async () => {
+    const accounts = await restoreWithTabs()
+    let releaseStop: (() => void) | undefined
+    vi.mocked(backend.stopConnection).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseStop = resolve
+        }),
+    )
+
+    const closing = accounts.closeConnection('acc-2::mc.example.net')
+    expect(releaseStop).toBeDefined()
+    // Stop jeszcze leci, więc zakładka musi zostać widoczna - inaczej proces
+    // zostałby bez okna i bez sposobu, żeby go zatrzymać.
+    expect(accounts.connections.map((conn) => conn.id)).toContain('acc-2::mc.example.net')
+
+    releaseStop?.()
+    await closing
+
+    expect(accounts.connections.map((conn) => conn.id)).toEqual(['acc-1::play.example.com'])
+  })
+
+  it('nieudany stop zostawia zakładkę i pokazuje błąd (R-18)', async () => {
+    const accounts = await restoreWithTabs()
+    vi.mocked(backend.stopConnection).mockRejectedValue({
+      code: 'connection.notRunning',
+      params: {},
+    })
+
+    await accounts.closeConnection('acc-2::mc.example.net')
+
+    expect(accounts.connections.map((conn) => conn.id)).toContain('acc-2::mc.example.net')
+    expect(accounts.errors[0]?.code).toBe('connection.notRunning')
+    // Sesja nie zmienia się, bo nic się nie zamknęło.
+    expect(backend.saveOpenTabs).not.toHaveBeenCalled()
+  })
+
+  it('zamknięcie zakładki usuwa stan zaznaczenia jej wierszy (R-41)', async () => {
+    const accounts = await restoreWithTabs()
+    const selections = useSelectionStore()
+    const id = 'acc-2::mc.example.net'
+    selections.selectRow(id, 1)
+    expect(selections.has(id)).toBe(true)
+
+    await accounts.closeConnection(id)
+
+    // Pusty wpis w mapie też jest wyciekiem - stan ma zniknąć, a nie tylko wyczyścić się.
+    expect(selections.has(id)).toBe(false)
+    expect(selections.sizeFor(id)).toBe(0)
   })
 
   it('zamknięcie zakładki usuwa ją z sesji', async () => {
