@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { i18n } from '../i18n'
@@ -56,5 +56,28 @@ describe('SettingsModal', () => {
     outside.focus()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
     expect(dialog.element.contains(document.activeElement)).toBe(true)
+  })
+
+  /**
+   * R-20: po nieudanym zapisie modal wołał `resetDraft()`, więc wpisane wartości
+   * wracały do stanu z dysku - użytkownik nie widział ani swojej zmiany, ani
+   * powodu błędu. Dziś modal zostaje otwarty **z kopią roboczą**, a komunikat
+   * błędu wisi nad nim (`z-[60]` w `ErrorToasts`).
+   */
+  it('nieudany zapis zostawia wpisane wartości w modalu (R-20)', async () => {
+    vi.mocked(backend.saveSettings).mockRejectedValue({
+      code: 'store.writeFailed',
+      params: { file: 'settings.json' },
+    })
+    const wrapper = await openModal()
+    const delay = wrapper.get('input[type="number"]')
+    await delay.setValue('900')
+
+    const save = wrapper.findAll('button').find((button) => button.text() === 'Save')
+    await save!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect((wrapper.get('input[type="number"]').element as HTMLInputElement).value).toBe('900')
   })
 })

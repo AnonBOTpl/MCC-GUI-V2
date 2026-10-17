@@ -168,9 +168,27 @@ export const useAccountsStore = defineStore('accounts', () => {
     }
   }
 
+  /**
+   * Ile kart błędów trzymamy naraz. Każda karta żyje 8 s, więc bez limitu seria
+   * błędów (np. zatrzymany klient przy wysyłce do wszystkich) zasłaniała cały
+   * lewy dolny róg okna.
+   */
+  const MAX_ERRORS = 5
+
+  /** Ten sam błąd = ten sam kod i te same parametry (R-39: bez duplikatów). */
+  function isSameError(entry: AppErrorEvent, payload: ErrorPayload): boolean {
+    return entry.code === payload.code && JSON.stringify(entry.params) === JSON.stringify(payload.params)
+  }
+
+  /**
+   * Dodaje kartę błędu. Powtórka tego samego błędu nic nie zmienia (jego karta
+   * już wisi), a ponad limit `MAX_ERRORS` wypadają najstarsze.
+   */
   function pushError(payload: ErrorPayload): void {
+    if (errors.value.some((entry) => isSameError(entry, payload))) return
     errorSeq += 1
-    errors.value = [...errors.value, { ...payload, id: errorSeq, ts: Date.now() }]
+    const next = [...errors.value, { ...payload, id: errorSeq, ts: Date.now() }]
+    errors.value = next.slice(-MAX_ERRORS)
   }
 
   function dismissError(id: number): void {

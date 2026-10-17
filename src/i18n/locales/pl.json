@@ -108,6 +108,7 @@
   "log": {
     "empty": "Brak wyjścia.",
     "follow": "Śledzenie",
+    "followAction": "Wróć do śledzenia",
     "menu": {
       "copy": "Kopiuj",
       "copyAll": "Kopiuj wszystko"
@@ -125,7 +126,9 @@
   "input": {
     "placeholder": "Wiadomość lub /komenda",
     "send": "Wyślij",
-    "sendToAll": "Wyślij do wszystkich"
+    "sendToAll": "Wyślij do wszystkich",
+    "noticeNoneRunning": "Nic nie działa — wiadomość nie została wysłana.",
+    "noticeNoActive": "Najpierw otwórz połączenie — wiadomość nie została wysłana."
   },
   "quickActions": {
     "title": "Szybkie akcje",
@@ -156,6 +159,8 @@
     "examples": "Przykłady",
     "addExample": "Dodaj",
     "addSection": "Dodaj akcję",
+    "count": "{count} / {limit}",
+    "limitReached": "Limit osiągnięty — najpierw usuń jakąś akcję.",
     "add": "Dodaj",
     "labelLabel": "Etykieta",
     "labelPlaceholder": "Etykieta",

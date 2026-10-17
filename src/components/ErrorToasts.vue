@@ -48,7 +48,9 @@ function messageFor(error: (typeof accounts.errors)[number]): string {
 </script>
 
 <template>
-  <div class="pointer-events-none fixed bottom-4 left-4 z-50 flex w-96 flex-col gap-2">
+  <!-- `z-[60]` > `z-50` modali: błąd zapisu w oknie dialogowym musi być widać,
+       bo to jedyna informacja, dlaczego okno zostało otwarte (R-20). -->
+  <div class="pointer-events-none fixed bottom-4 left-4 z-[60] flex w-96 flex-col gap-2">
     <TransitionGroup name="toast">
       <div
         v-for="error in accounts.errors"

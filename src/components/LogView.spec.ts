@@ -442,6 +442,23 @@ describe('LogView - autoprzewijanie', () => {
     expect(wrapper.findAll('button')).toHaveLength(0)
   })
 
+  /**
+   * R-43: przycisk dociągający widok do dołu miał etykietę stanu („Following”)
+   * także wtedy, gdy śledzenie było **wyłączone** - czyli nazywał coś, czego
+   * w danej chwili nie było. Dziś etykieta mówi, co zrobi kliknięcie.
+   */
+  it('przycisk powrotu nazywa czynność, a nie stan (R-43)', async () => {
+    const wrapper = mount(Host, { global: { plugins: [i18n] } })
+    const element = wrapper.find('.log-text.overflow-auto').element as HTMLElement
+    stubGeometry(element, 200, 2000)
+    await flushPromises()
+
+    userScroll(element, 1000)
+    await flushPromises()
+
+    expect(wrapper.get('button').text()).toBe('Follow')
+  })
+
   it('pokazuje zaległość na pierwszym zdarzeniu wejścia, bez czekania na pilnowacz', async () => {
     // Klatki nie ma (okno zminimalizowane albo zasłonięte) - zostaje pilnowacz.
     vi.stubGlobal('requestAnimationFrame', () => 0)

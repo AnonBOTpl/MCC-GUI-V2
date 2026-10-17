@@ -108,6 +108,7 @@
   "log": {
     "empty": "No output yet.",
     "follow": "Following",
+    "followAction": "Follow",
     "menu": {
       "copy": "Copy",
       "copyAll": "Copy all"
@@ -125,7 +126,9 @@
   "input": {
     "placeholder": "Message or /command",
     "send": "Send",
-    "sendToAll": "Send to all"
+    "sendToAll": "Send to all",
+    "noticeNoneRunning": "Nothing is running — the message was not sent.",
+    "noticeNoActive": "Open a connection first — the message was not sent."
   },
   "quickActions": {
     "title": "Quick actions",
@@ -156,6 +159,8 @@
     "examples": "Examples",
     "addExample": "Add",
     "addSection": "Add action",
+    "count": "{count} / {limit}",
+    "limitReached": "Limit reached — delete an action first.",
     "add": "Add",
     "labelLabel": "Label",
     "labelPlaceholder": "Label",

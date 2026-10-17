@@ -713,7 +713,7 @@ const showJumpButton = computed(() => {
         @click="resumeFollow"
       >
         <ArrowDown :size="13" />
-        {{ t('log.follow') }}
+        {{ t('log.followAction') }}
       </button>
     </Transition>
   </div>

@@ -23,7 +23,7 @@ import { useI18n } from 'vue-i18n'
 import { GripVertical, Trash2 } from '@lucide/vue'
 import type { Preset, PresetColor } from '../api/contract'
 import { PRESET_COLOR_OPTIONS, presetColorClass } from '../presets/palette'
-import { moveItem, newPresetId, rowIndexAt } from '../presets/model'
+import { MAX_PRESETS, moveItem, newPresetId, rowIndexAt } from '../presets/model'
 import { usePresetsStore } from '../stores/presets'
 import BaseModal from './BaseModal.vue'
 
@@ -72,7 +72,18 @@ const canSave = computed(
     !saving.value &&
     draft.value.every((preset) => preset.label.trim() !== '' && preset.text.trim() !== ''),
 )
-const canAdd = computed(() => newLabel.value.trim() !== '' && newText.value.trim() !== '')
+/**
+ * Przy limicie przycisk „Dodaj” jest zablokowany - Rust odrzuciłby taką listę
+ * przy zapisie, a użytkownik dowiedziałby się o tym dopiero po `Save` (R-38).
+ */
+const atLimit = computed(() => draft.value.length >= MAX_PRESETS)
+const canAdd = computed(
+  () => newLabel.value.trim() !== '' && newText.value.trim() !== '' && !atLimit.value,
+)
+/** Licznik przy nagłówku sekcji dodawania: `12 / 60`. */
+const countText = computed(() =>
+  t('presets.count', { count: draft.value.length, limit: MAX_PRESETS }),
+)
 
 /** Przepisuje bieżące presety do kopii roboczej przy każdym otwarciu. */
 function resetDraft(): void {
@@ -354,9 +365,17 @@ async function confirm(): Promise<void> {
 
     <!-- Dodawanie nowej akcji -->
     <div class="mt-1 flex flex-col gap-1.5 border-t border-slate-800 pt-3">
-      <span class="text-[11px] uppercase tracking-wide text-slate-500">
-        {{ t('presets.addSection') }}
-      </span>
+      <div class="flex items-baseline justify-between gap-2">
+        <span class="text-[11px] uppercase tracking-wide text-slate-500">
+          {{ t('presets.addSection') }}
+        </span>
+        <span
+          class="text-[11px] tabular-nums"
+          :class="atLimit ? 'text-amber-300' : 'text-slate-500'"
+        >
+          {{ countText }}
+        </span>
+      </div>
       <div class="flex items-center gap-2">
         <input
           v-model="newLabel"
@@ -404,6 +423,13 @@ async function confirm(): Promise<void> {
           @click="newColor = color"
         />
       </div>
+
+      <p
+        v-if="atLimit"
+        class="text-[11px] text-amber-300"
+      >
+        {{ t('presets.limitReached') }}
+      </p>
 
       <p class="text-[11px] text-slate-500">
         {{ t('presets.sendTip') }}

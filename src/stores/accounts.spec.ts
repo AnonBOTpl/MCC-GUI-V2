@@ -326,3 +326,51 @@ describe('store kont - autoprzewijanie per zakładka', () => {
     expect(backend.startConnection).toHaveBeenCalledWith('acc-1', 'play.example.com')
   })
 })
+
+describe('store kont - karty błędów (R-39)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('ten sam błąd nie mnoży kart', () => {
+    const accounts = useAccountsStore()
+    accounts.pushError({ code: 'connection.notRunning', params: { accountId: 'acc-1' } })
+    accounts.pushError({ code: 'connection.notRunning', params: { accountId: 'acc-1' } })
+
+    expect(accounts.errors).toHaveLength(1)
+  })
+
+  it('ten sam kod z innymi parametrami to inna karta', () => {
+    const accounts = useAccountsStore()
+    accounts.pushError({ code: 'process.startFailed', params: { accountId: 'acc-1' } })
+    accounts.pushError({ code: 'process.startFailed', params: { accountId: 'acc-2' } })
+
+    expect(accounts.errors).toHaveLength(2)
+  })
+
+  it('ponad pięć błędów zostawia pięć najnowszych', () => {
+    const accounts = useAccountsStore()
+    for (let index = 0; index < 20; index += 1) {
+      accounts.pushError({ code: 'process.startFailed', params: { accountId: `acc-${index}` } })
+    }
+
+    expect(accounts.errors).toHaveLength(5)
+    // Wypadają najstarsze - zostaje ogon listy, w kolejności napływu.
+    expect(accounts.errors.map((error) => error.params.accountId)).toEqual([
+      'acc-15',
+      'acc-16',
+      'acc-17',
+      'acc-18',
+      'acc-19',
+    ])
+  })
+
+  it('ukrycie karty nie blokuje pokazania tego samego błędu ponownie', () => {
+    const accounts = useAccountsStore()
+    accounts.pushError({ code: 'connection.notRunning', params: {} })
+    accounts.dismissError(accounts.errors[0].id)
+    accounts.pushError({ code: 'connection.notRunning', params: {} })
+
+    expect(accounts.errors).toHaveLength(1)
+  })
+})

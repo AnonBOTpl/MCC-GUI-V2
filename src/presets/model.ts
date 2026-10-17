@@ -13,6 +13,14 @@ import type { Preset } from '../api/contract'
 let idSeq = 0
 
 /**
+ * Górny limit liczby akcji. Musi zgadzać się z `MAX_PRESETS` w
+ * `src-tauri/src/preset.rs` - Rust odrzuca dłuższą listę przy zapisie, a edytor
+ * blokuje dodanie wiersza już przy limicie (R-38), żeby błąd nie wyskakiwał
+ * dopiero po kliknięciu „Zapisz”.
+ */
+export const MAX_PRESETS = 60
+
+/**
  * Nowy identyfikator presetu. Licznik w module gwarantuje unikalność nawet
  * wtedy, gdy dwie akcje powstaną w tej samej milisekundzie.
  */

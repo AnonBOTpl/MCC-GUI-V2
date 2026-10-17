@@ -45,6 +45,23 @@ typing could send an action that was not visible on screen.
 - **Chat-log cleanup no longer follows links.** A junction (link) inside the log folder can no
   longer make the app delete old `YYYY-MM-DD.log` files outside that folder.
 - **A closed tab no longer leaves its line selection behind.**
+- **A message you typed is no longer lost when nobody could receive it.** With no open
+  connection, or with “Send to all” on and nothing running, the text stays in the field and a
+  line above it says why it was not sent.
+- **Error cards no longer pile up.** The same error shown twice gives one card, and at most five
+  are kept at a time — before, a burst of errors filled the whole bottom corner.
+- **Error messages are visible on top of dialogs.** The message used to be drawn behind the open
+  dialog, so a save that failed in Settings looked like nothing had happened at all.
+- **A failed save in Settings keeps what you entered.** Before, the dialog threw the changes away
+  and went back to the values stored on disk, so retrying meant typing everything again.
+- **Two quick setting changes no longer cancel each other.** Changes are written one after
+  another, so the second one no longer overwrites the first.
+- **The quick-action editor stops at the limit.** The 61st action could be added and the whole
+  list was rejected on Save; the editor now blocks it and shows `n / 60`.
+- **The button that jumps back to the end of the log says what it does.** It read “Following”
+  while following was off; it now says “Follow”.
+- **The window tells other programs which language it is in.** After switching to Polish, screen
+  readers and the spell checker in text fields know the app is Polish instead of assuming English.
 - **The Settings dialog scrolls** when the window is short, so the Save button stays reachable
   (it used to be pushed off screen).
 

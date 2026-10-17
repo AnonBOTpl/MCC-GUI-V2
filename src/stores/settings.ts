@@ -39,9 +39,20 @@ function readStoredLocale(): Locale {
   return isLocale(stored) ? stored : DEFAULT_LOCALE
 }
 
+/**
+ * `<html lang>` mówi czytnikom ekranu i sprawdzaniu pisowni, w jakim języku jest
+ * strona. Bez tego zostawało `en` z `index.html` także po przełączeniu na polski.
+ */
+function applyDocumentLang(next: Locale): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.lang = next
+}
+
 export const useSettingsStore = defineStore('settings', () => {
   const locale = ref<Locale>(readStoredLocale())
   i18n.global.locale.value = locale.value
+  // Język z poprzedniej sesji obowiązuje od pierwszego rysowania okna.
+  applyDocumentLang(locale.value)
 
   const appSettings = ref<AppSettings>({ ...FALLBACK_SETTINGS })
   /** Czy udało się wczytać ustawienia z Rusta (potrzebne do pierwszego uruchomienia). */
@@ -55,6 +66,7 @@ export const useSettingsStore = defineStore('settings', () => {
   function setLocale(next: Locale): void {
     locale.value = next
     i18n.global.locale.value = next
+    applyDocumentLang(next)
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, next)
     }
@@ -89,8 +101,16 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  /** Zapisuje zmiany (częściowe) i podstawia wersję znormalizowaną z Rusta. */
-  async function save(patch: Partial<AppSettings>): Promise<boolean> {
+  /**
+   * Zapis czeka na poprzedni. Bez tego dwa szybkie zapisy wysyłały dwie migawki
+   * policzone z tej samej, starej wersji: drugi nadpisywał zmiany pierwszego
+   * (R-37). Migawkę policzymy dopiero w chwili wysyłki, więc zawiera już wynik
+   * poprzedniego zapisu.
+   */
+  let saveQueue: Promise<unknown> = Promise.resolve()
+
+  /** Wysyła jedną migawkę i podstawia wersję znormalizowaną przez Rusta. */
+  async function pushSettings(patch: Partial<AppSettings>): Promise<boolean> {
     try {
       appSettings.value = await backend.saveSettings({ ...appSettings.value, ...patch })
       applyLogBufferSize(appSettings.value)
@@ -101,6 +121,14 @@ export const useSettingsStore = defineStore('settings', () => {
       pushError(error as ErrorPayload)
       return false
     }
+  }
+
+  /** Zapisuje zmiany (częściowe) i podstawia wersję znormalizowaną z Rusta. */
+  async function save(patch: Partial<AppSettings>): Promise<boolean> {
+    const pending = saveQueue.then(() => pushSettings(patch))
+    // Kolejka nie może paść po błędzie zapisu - inaczej następny zapis nigdy nie ruszy.
+    saveQueue = pending.catch(() => undefined)
+    return pending
   }
 
   /**

@@ -99,8 +99,9 @@ async function confirm(): Promise<void> {
   })
   saving.value = false
 
+  // Przy błędzie modal zostaje otwarty **z tym, co użytkownik wpisał**: toast nad
+  // modalem tłumaczy błąd, a kopia robocza nie może zniknąć przed ponowną próbą (R-20).
   if (ok) emit('close')
-  else resetDraft()
 }
 </script>
 

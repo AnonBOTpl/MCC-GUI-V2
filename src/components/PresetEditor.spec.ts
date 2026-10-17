@@ -205,6 +205,49 @@ describe('PresetEditor', () => {
     expect(fieldValues(reopened)).toEqual(['/send /home'])
   })
 
+  /**
+   * R-38: edytor pozwalał dodać 61. akcję, a Rust odrzucał cały zapis przy
+   * `Save`. Dziś przycisk „Dodaj” jest zablokowany na limicie, a licznik przy
+   * nagłówku pokazuje, ile jeszcze zostało.
+   */
+  it('blokuje dodanie akcji powyżej limitu i pokazuje licznik (R-38)', async () => {
+    const full = Array.from({ length: 60 }, (_, index) =>
+      preset(`p${index}`, `/akcja${index}`, `/send /akcja${index}`),
+    )
+    const wrapper = setup(full)
+
+    expect(wrapper.text()).toContain('60 / 60')
+    expect(wrapper.text()).toContain('Limit reached')
+    const add = wrapper.findAll('button').find((button) => button.text() === 'Add')
+    expect((add!.element as HTMLButtonElement).disabled).toBe(true)
+
+    // Nawet po wpisaniu treści przycisk zostaje zablokowany.
+    // Pola formularza „nowa akcja” są **na końcu** listy, nie pierwsze.
+    await wrapper.findAll('input[aria-label="Label"]').at(-1)!.setValue('/nowa')
+    const textField = wrapper.findAll('input[aria-label="Text sent to the client"]').at(-1)!
+    await textField.setValue('/send /nowa')
+    expect((add!.element as HTMLButtonElement).disabled).toBe(true)
+    expect(fieldValues(wrapper)).toHaveLength(60)
+  })
+
+  it('przy jednym wolnym miejscu dodaje akcję, a potem pokazuje limit (R-38)', async () => {
+    const almost = Array.from({ length: 59 }, (_, index) =>
+      preset(`p${index}`, `/akcja${index}`, `/send /akcja${index}`),
+    )
+    const wrapper = setup(almost)
+
+    await wrapper.findAll('input[aria-label="Label"]').at(-1)!.setValue('/ostatnia')
+    const textField = wrapper.findAll('input[aria-label="Text sent to the client"]').at(-1)!
+    await textField.setValue('/send /ostatnia')
+    const add = wrapper.findAll('button').find((button) => button.text() === 'Add')
+    expect((add!.element as HTMLButtonElement).disabled).toBe(false)
+    await add!.trigger('click')
+
+    expect(fieldValues(wrapper)).toHaveLength(60)
+    expect(wrapper.text()).toContain('Limit reached')
+    expect((add!.element as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('blokuje zapis, gdy wiersz nie ma etykiety albo tekstu', async () => {
     const wrapper = setup([preset('p1', '/home', '/send /home')])
 
