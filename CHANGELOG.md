@@ -2,9 +2,50 @@
 
 All notable changes to MCC GUI V2. Dates are the days the work happened, newest first.
 
-Version **2.0.0 has not been released yet**. The installer carrying that number on disk was
-built during development, so it has to be built again before a release — otherwise it will
-not contain everything listed below. None of the 17 October changes is in any installer yet.
+Version **2.0.0** is published. Its installer was rebuilt on 19 October 2026 from the current
+tree and the release asset was replaced with that build (new SHA256 in the release notes);
+installing it on Windows 11 was checked. Everything listed below is in that installer.
+
+## 19 October 2026
+
+**Fixed**
+
+- **Log colours stay readable on the dark background.** Six of the sixteen Minecraft colours
+  were below the WCAG AA contrast for text on the log background (`§0` 1.04:1, `§1` 1.52:1,
+  `§4` 2.60:1, `§5` 3.16:1, `§8` 2.71:1, `§9` 3.97:1). They are now lightened inside their own
+  colour family (`§0` → `#7b7b7b`, `§1` → `#7373d9`, `§4` → `#d94a4a`, `§5` → `#b95cb9`,
+  `§8` → `#8f8f8f`, `§9` → `#7d7dff`), so dark still reads darker than light in every pair.
+  The other ten colours are untouched, and a unit test now checks all sixteen against the log
+  background. ANSI colours take their values from the same table, so they get the fix too.
+  Details in `docs/MCC_NOTES.md` §9.
+
+**Changed**
+
+- **Removing an account asks first.** The trash button opens a question naming the account and
+  says that a running connection is closed first; nothing is removed until you confirm.
+- **Closing a tab with a live connection asks first.** When the client is starting, waiting for
+  login or running, the tab asks before it disconnects; stopped and crashed tabs close right
+  away. Cancelling leaves the tab and the process untouched.
+- **The app now sends a Content Security Policy.** Only the app's own scripts run: an injected
+  inline script is blocked in the built app, while inline styles stay allowed because the
+  virtualised log positions its rows with them. Connections are limited to the app itself and
+  the Tauri IPC channel.
+
+**Docs**
+
+- The README now says that quick actions and their editor only exist while a connection tab is
+  open, so their absence with no tabs is expected behaviour, not a bug.
+
+## 18 October 2026
+
+**Changed**
+
+- **Each account's chat logs get their own folder, with a short hash in the name.** The folder
+  used to be named after the account label alone, so two labels that Windows treats as the
+  same folder (`Work` and `work`, or a label with a trailing space) wrote into one directory and
+  their logs mixed. The folder is now `<account label>-<four hex characters>`, for example
+  `Work-3f9a`. The hash comes from the label, so it stays the same across restarts; renaming an
+  account starts a new folder. Logs written so far stay where they are and are not moved.
 
 ## 17 October 2026
 

@@ -103,7 +103,9 @@ accounts so servers do not see it as spam. Server-side commands have to go throu
 sits collapsed as a thin strip at the bottom and unfolds when you click it. Clicking an action
 sends it exactly as if you had typed it, with the same scope as the input bar.
 **Edit** lets you add, rename, recolour, reorder and switch actions on or off; an action that
-is off disappears from the bar but stays in the editor.
+is off disappears from the bar but stays in the editor. The bar and the editor only exist
+while a connection tab is open: with no tabs the actions stay saved in `presets.json`, but
+the UI gives you no way to edit them.
 
 **Settings (gear icon in the title bar).** The MCC path, restoring tabs on start, asking
 before closing with live connections, the **Delay between accounts** for "send to all", the
@@ -122,8 +124,13 @@ Chat logs are **on by default** and can be switched off in Settings. Every conne
 what it sees and says to:
 
 ```
-<logs>\<server>\<account label>\<YYYY-MM-DD>.log
+<logs>\<server>\<account label>-<short hash>\<YYYY-MM-DD>.log
 ```
+
+The four-character hash after the label keeps accounts apart whose labels differ only in
+letter case or trailing spaces (`Work` and `work` are the same folder on Windows). It is
+derived from the label, so a connection always writes to the same folder — rename the account
+and its logs start in a new one.
 
 `<logs>` is `%APPDATA%\com.mccgui.v2\logs` unless you pick another folder in Settings
 (**Change**, **Open folder**). All sessions of the same day append to one file, each one
@@ -142,7 +149,8 @@ no code ever reaches a file.
 
 **Retention:** **Keep chat logs for** (default 30 days, `0` = keep everything). Cleanup runs
 at startup and once a day, and deletes only files named `YYYY-MM-DD.log` at
-`<server>\<account>\` depth — anything else you keep in the logs folder is left alone.
+`<server>\<account>\` depth (the account folder, hash included) — anything else you keep in
+the logs folder is left alone.
 
 Writing happens in the background, so a slow disk can never stall the app; if too much output
 arrives at once, the file gets a single `N lines omitted (queue full)` line. A write error

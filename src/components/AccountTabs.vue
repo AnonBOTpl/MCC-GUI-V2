@@ -2,12 +2,13 @@
 // Zakładki: jedna na **połączenie** (konto + serwer), bo to jedno połączenie
 // odpowiada jednemu procesowi MCC.
 
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { X } from '@lucide/vue'
-import { statusDotClass, statusKey } from '../log/status'
+import { isConnectionLive, statusDotClass, statusKey } from '../log/status'
 import { useAccountsStore } from '../stores/accounts'
 import { useLogsStore } from '../stores/logs'
+import ConfirmModal from './ConfirmModal.vue'
 
 const { t } = useI18n()
 const accounts = useAccountsStore()
@@ -91,6 +92,29 @@ function unreadFor(id: string): number {
 function accountLabel(accountId: string): string {
   return accounts.accounts.find((account) => account.id === accountId)?.label ?? accountId
 }
+
+/**
+ * Zakładka czekająca na potwierdzenie zamknięcia (R-44).
+ *
+ * Zamknięcie zakładki zatrzymuje proces, więc pytamy tylko wtedy, gdy proces
+ * jeszcze żyje (`starting`, `awaiting_login`, `running`, `stopping`).
+ * Zatrzymana i po awarii zamyka się od razu - nie ma czego tracić.
+ */
+const pendingClose = ref<string | null>(null)
+const pendingConnection = computed(
+  () => accounts.connections.find((conn) => conn.id === pendingClose.value) ?? null,
+)
+
+function requestClose(id: string): void {
+  if (isConnectionLive(accounts.statusOf(id))) pendingClose.value = id
+  else void accounts.closeConnection(id)
+}
+
+async function confirmClose(): Promise<void> {
+  const id = pendingClose.value
+  pendingClose.value = null
+  if (id) await accounts.closeConnection(id)
+}
 </script>
 
 <template>
@@ -146,10 +170,22 @@ function accountLabel(accountId: string): string {
         type="button"
         class="my-1 mr-1 flex h-6 w-6 shrink-0 items-center justify-center self-center rounded text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
         :title="t('tabs.close')"
-        @click.stop="accounts.closeConnection(conn.id)"
+        @click.stop="requestClose(conn.id)"
       >
         <X :size="12" />
       </button>
     </div>
   </div>
+
+  <!-- Potwierdzenie zamknięcia działającej zakładki (R-44). Poza `role="tablist"`,
+       bo dzieci listy zakładek mogą być tylko zakładkami. -->
+  <ConfirmModal
+    v-if="accounts.connections.length > 0"
+    :open="pendingConnection !== null"
+    :title="t('confirm.closeTabTitle')"
+    :message="t('confirm.closeTabMessage', { server: pendingConnection?.server ?? '' })"
+    :confirm-label="t('confirm.closeTabAction')"
+    @close="pendingClose = null"
+    @confirm="confirmClose"
+  />
 </template>

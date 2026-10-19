@@ -7,18 +7,32 @@
 //
 // Moduł jest czysty (bez DOM i bez Vue), więc daje się w pełni przetestować.
 
-/** Standardowa paleta Minecrafta - te same wartości RGB co w MCC. */
+/**
+ * Paleta Minecrafta z poprawionym kontrastem (R-07).
+ *
+ * Sześć barw MCC ma na ciemnym tle logu (`#020617`) kontrast poniżej 4,5:1,
+ * czyli poniżej progu WCAG AA dla zwykłego tekstu: `§0` 1,04:1, `§1` 1,52:1,
+ * `§4` 2,60:1, `§5` 3,16:1, `§8` 2,71:1, `§9` 3,97:1. Te sześć barw jest
+ * rozjaśnionych w obrębie swojej rodziny kolorów (ciemna czerwień zostaje
+ * ciemniejsza od `§c`, ciemny fiolet od `§d`, ciemny niebieski od `§9`,
+ * a `§0` ciemniejszy od `§8`), więc kolory nadal da się od siebie odróżnić.
+ *
+ * Oryginalne wartości MCC dla zmienionych barw: `§0` `#000000`, `§1` `#0000aa`,
+ * `§4` `#aa0000`, `§5` `#aa00aa`, `§8` `#555555`, `§9` `#5555ff`. Pozostałe
+ * dziesięć barw to dokładnie wartości MCC. Kontrast pilnuje test
+ * w `color.spec.ts` (cała szesnastka na tle logu).
+ */
 export const MINECRAFT_COLORS: Record<string, string> = {
-  '0': '#000000',
-  '1': '#0000aa',
+  '0': '#7b7b7b',
+  '1': '#7373d9',
   '2': '#00aa00',
   '3': '#00aaaa',
-  '4': '#aa0000',
-  '5': '#aa00aa',
+  '4': '#d94a4a',
+  '5': '#b95cb9',
   '6': '#ffaa00',
   '7': '#aaaaaa',
-  '8': '#555555',
-  '9': '#5555ff',
+  '8': '#8f8f8f',
+  '9': '#7d7dff',
   a: '#55ff55',
   b: '#55ffff',
   c: '#ff5555',
@@ -26,6 +40,9 @@ export const MINECRAFT_COLORS: Record<string, string> = {
   e: '#ffff55',
   f: '#ffffff',
 }
+
+/** Tło widoku logu (`bg-slate-950` w `LogView.vue`); punkt odniesienia dla kontrastu. */
+export const LOG_BACKGROUND = '#020617'
 
 /** Domyślny kolor tekstu na ciemnym tle (odpowiednik `§f`). */
 export const DEFAULT_FOREGROUND = '#e2e8f0'
@@ -67,24 +84,29 @@ function resetStyles(state: FormatState): void {
   state.strikethrough = false
 }
 
-/** Klasyczne ANSI 30-37 / 90-97 (paleta 4-bit przybliżona do kolorów Minecrafta). */
+/**
+ * Klasyczne ANSI 30-37 / 90-97 (paleta 4-bit przybliżona do kolorów Minecrafta).
+ *
+ * Wartości są brane z `MINECRAFT_COLORS`, a nie wpisane drugi raz, żeby ANSI
+ * dostawało te same poprawki kontrastu co kody `§`.
+ */
 const ANSI_BASIC_COLORS: Record<number, string> = {
-  30: '#000000',
-  31: '#aa0000',
-  32: '#00aa00',
-  33: '#ffaa00',
-  34: '#0000aa',
-  35: '#aa00aa',
-  36: '#00aaaa',
-  37: '#aaaaaa',
-  90: '#555555',
-  91: '#ff5555',
-  92: '#55ff55',
-  93: '#ffff55',
-  94: '#5555ff',
-  95: '#ff55ff',
-  96: '#55ffff',
-  97: '#ffffff',
+  30: MINECRAFT_COLORS['0'],
+  31: MINECRAFT_COLORS['4'],
+  32: MINECRAFT_COLORS['2'],
+  33: MINECRAFT_COLORS['6'],
+  34: MINECRAFT_COLORS['1'],
+  35: MINECRAFT_COLORS['5'],
+  36: MINECRAFT_COLORS['3'],
+  37: MINECRAFT_COLORS['7'],
+  90: MINECRAFT_COLORS['8'],
+  91: MINECRAFT_COLORS['c'],
+  92: MINECRAFT_COLORS['a'],
+  93: MINECRAFT_COLORS['e'],
+  94: MINECRAFT_COLORS['9'],
+  95: MINECRAFT_COLORS['d'],
+  96: MINECRAFT_COLORS['b'],
+  97: MINECRAFT_COLORS['f'],
 }
 
 /** ANSI 40-47 / 100-107 - tła. Renderujemy tylko kolor tekstu, ale musimy je znać. */

@@ -104,7 +104,9 @@ spam. Komendy serwera trzeba wysyłać przez `/send`, na przykład `/send /home`
 Pasek siedzi zwinięty jako cienka kreska na dole i rozwija się po kliknięciu. Kliknięcie akcji
 wysyła jej tekst dokładnie tak, jakbyś go wpisał, z tym samym zasięgiem co pole wpisywania.
 **Edytuj** pozwala dodawać, zmieniać nazwy i kolory, przestawiać kolejność i włączać lub
-wyłączać akcje; wyłączona akcja znika z paska, ale zostaje w edytorze.
+wyłączać akcje; wyłączona akcja znika z paska, ale zostaje w edytorze. Pasek i edytor są
+dostępne tylko przy otwartej zakładce połączenia — bez zakładek akcje zostają zapisane
+w `presets.json`, ale z poziomu aplikacji nie da się ich zmienić.
 
 **Ustawienia (ikona koła zębatego w pasku tytułu).** Ścieżka do MCC, przywracanie zakładek
 przy starcie, pytanie przed zamknięciem przy działających połączeniach, **Odstęp między
@@ -123,8 +125,13 @@ Logi czatu są **domyślnie włączone** i można je wyłączyć w Ustawieniach.
 zapisuje to, co widzi i pisze, do pliku:
 
 ```
-<logi>\<serwer>\<etykieta konta>\<RRRR-MM-DD>.log
+<logi>\<serwer>\<etykieta konta>-<krótki skrót>\<RRRR-MM-DD>.log
 ```
+
+Czteroznakowy skrót po etykiecie rozdziela konta, których etykiety różnią się tylko wielkością
+liter albo spacjami na końcu (`Work` i `work` to w Windows ten sam folder). Skrót liczy się
+z etykiety, więc połączenie zawsze pisze do tego samego folderu — po zmianie nazwy konta
+jego logi zaczynają się w nowym.
 
 `<logi>` to `%APPDATA%\com.mccgui.v2\logs`, o ile nie wskażesz innego folderu w Ustawieniach
 (**Zmień**, **Otwórz folder**). Wszystkie sesje tego samego dnia dopisują się do jednego
@@ -144,8 +151,8 @@ dysk, więc żaden kod nie znajdzie się w żadnym pliku.
 
 **Retencja:** ustawienie **Przechowuj logi czatu przez** (domyślnie 30 dni, `0` = bez limitu).
 Czyszczenie działa przy starcie i raz na dobę i usuwa wyłącznie pliki o nazwie
-`RRRR-MM-DD.log` na głębokości `<serwer>\<konto>\` — wszystko inne, co trzymasz w folderze
-logów, zostaje nietknięte.
+`RRRR-MM-DD.log` na głębokości `<serwer>\<konto>\` (folder konta razem ze skrótem) — wszystko
+inne, co trzymasz w folderze logów, zostaje nietknięte.
 
 Zapis odbywa się w tle, więc wolny dysk nigdy nie zatrzyma aplikacji. Jeśli w jednej chwili
 przyjdzie bardzo dużo linii, w pliku pojawi się pojedynczy wiersz

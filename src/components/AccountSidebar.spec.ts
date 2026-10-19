@@ -14,6 +14,8 @@ vi.mock('../api/backend', () => ({
     stopConnection: vi.fn(),
     startConnection: vi.fn(),
     saveOpenTabs: vi.fn(),
+    saveAccounts: vi.fn(),
+    removeAccount: vi.fn(),
   },
   events: {},
 }))
@@ -35,6 +37,7 @@ describe('AccountSidebar - przycisk połączenia', () => {
     vi.mocked(backend.stopConnection).mockResolvedValue(undefined)
     vi.mocked(backend.startConnection).mockResolvedValue(undefined)
     vi.mocked(backend.saveOpenTabs).mockResolvedValue([])
+    vi.mocked(backend.removeAccount).mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -95,6 +98,41 @@ describe('AccountSidebar - przycisk połączenia', () => {
     const start = wrapper.get(`button[title="${i18n.global.t('account.start')}"]`)
     expect(start.classes()).toContain('text-green-400')
     expect(wrapper.findAll(`button[title="${i18n.global.t('account.disconnect')}"]`)).toHaveLength(0)
+  })
+
+  /** Usunięcie konta (R-19): dopiero po potwierdzeniu, nigdy po samym kliknięciu. */
+  it('usunięcie konta pyta o potwierdzenie i nic nie robi przed nim', async () => {
+    const wrapper = mountSidebar('running')
+
+    await wrapper.get(`button[title="${i18n.global.t('sidebar.removeAccount')}"]`).trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain(i18n.global.t('confirm.removeAccountTitle'))
+    expect(backend.removeAccount).not.toHaveBeenCalled()
+    expect(useAccountsStore().accounts).toHaveLength(1)
+
+    await wrapper.get('[role="dialog"] footer button:last-child').trigger('click')
+    await flushPromises()
+
+    expect(backend.removeAccount).toHaveBeenCalledWith('acc-1')
+    expect(useAccountsStore().accounts).toHaveLength(0)
+    expect(backend.saveAccounts).toHaveBeenCalled()
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  it('anulowanie pytania zostawia konto w panelu', async () => {
+    const wrapper = mountSidebar('stopped')
+
+    await wrapper.get(`button[title="${i18n.global.t('sidebar.removeAccount')}"]`).trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[role="dialog"] footer button:first-child').trigger('click')
+    await flushPromises()
+
+    expect(backend.removeAccount).not.toHaveBeenCalled()
+    expect(useAccountsStore().accounts).toHaveLength(1)
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
   })
 
   /**

@@ -51,6 +51,15 @@
     "confirm": "Zamknij i rozłącz",
     "cancel": "Zostaw uruchomione"
   },
+  "confirm": {
+    "cancel": "Anuluj",
+    "removeAccountTitle": "Usunąć konto?",
+    "removeAccountMessage": "Konto „{label}” zniknie razem z listą serwerów. Działające połączenie zostanie najpierw rozłączone.",
+    "removeAccountAction": "Usuń konto",
+    "closeTabTitle": "Zamknąć kartę?",
+    "closeTabMessage": "Połączenie z serwerem {server} nadal działa. Zamknięcie karty je rozłączy; konto i serwer zostaną zapisane.",
+    "closeTabAction": "Zamknij i rozłącz"
+  },
   "accountType": {
     "microsoft": "Microsoft",
     "offline": "Offline"

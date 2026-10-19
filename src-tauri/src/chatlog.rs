@@ -284,10 +284,31 @@ pub fn sanitize_segment(raw: &str) -> String {
     out
 }
 
-/// Ścieżka pliku logu: `<root>/<serwer>/<konto>/<RRRR-MM-DD>.log`.
+/// Krótki, deterministyczny skrót etykiety: 4 znaki hex z FNV-1a (32 bity).
+///
+/// Bez nowej zależności i bez stanu do pilnowania: ta sama etykieta zawsze daje
+/// ten sam skrót, także po restarcie aplikacji i na innym komputerze.
+fn label_hash(label: &str) -> String {
+    let mut hash: u32 = 0x811c_9dc5;
+    for byte in label.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    format!("{:04x}", hash & 0xffff)
+}
+
+/// Nazwa katalogu konta w logach: etykieta plus skrót (`Work-3f9a`).
+///
+/// Bez skrótu etykiety `Work` i `work` (albo dwa konta o tej samej nazwie)
+/// trafiały do jednego katalogu na NTFS i ich logi się mieszały (R-31).
+pub fn account_folder(label: &str) -> String {
+    format!("{}-{}", sanitize_segment(label), label_hash(label))
+}
+
+/// Ścieżka pliku logu: `<root>/<serwer>/<konto>-<skrót>/<RRRR-MM-DD>.log`.
 pub fn log_file_path(root: &Path, server: &str, account: &str, date: &str) -> PathBuf {
     root.join(sanitize_segment(server))
-        .join(sanitize_segment(account))
+        .join(account_folder(account))
         .join(format!("{date}.log"))
 }
 
@@ -980,6 +1001,44 @@ mod tests {
     }
 
     #[test]
+    fn account_folder_separates_labels_that_share_a_name_on_ntfs() {
+        // Ten sam czytelny prefiks, ale inne etykiety - więc inne katalogi.
+        assert_ne!(account_folder("Work"), account_folder("work"));
+        assert_ne!(account_folder("Main"), account_folder("Main "));
+        // Skrót jest deterministyczny: powtórne wywołanie daje tę samą nazwę.
+        assert_eq!(account_folder("AnonBOT"), account_folder("AnonBOT"));
+    }
+
+    #[test]
+    fn account_folder_keeps_the_label_readable_and_sanitized() {
+        let folder = account_folder("AnonBOT");
+        let (prefix, hash) = folder.split_once('-').expect("etykieta-skrot");
+        assert_eq!(prefix, "AnonBOT");
+        assert_eq!(hash.len(), 4);
+        assert!(hash.chars().all(|ch| ch.is_ascii_hexdigit()));
+
+        // Znaki niedozwolone w nazwach są nadal wymieniane na `_`.
+        assert!(account_folder("a<b>c").starts_with("a_b_c-"));
+        // Granice nazw (`.` i `..`) nie mogą wyjść poza katalog serwera.
+        assert!(account_folder("..").starts_with("_-"));
+    }
+
+    #[test]
+    fn log_path_uses_the_folder_with_the_hash() {
+        let root = PathBuf::from("C:/logs");
+        let path = log_file_path(&root, "play.example.com:25565", "AnonBOT", "2026-10-17");
+        let folder = account_folder("AnonBOT");
+
+        assert!(folder.starts_with("AnonBOT-"), "katalog: {folder}");
+        assert_eq!(
+            path,
+            root.join("play.example.com_25565")
+                .join(&folder)
+                .join("2026-10-17.log")
+        );
+    }
+
+    #[test]
     fn sanitizes_windows_illegal_characters() {
         assert_eq!(
             sanitize_segment("play.example.com:25565"),
@@ -1020,7 +1079,7 @@ mod tests {
             path,
             PathBuf::from("C:/logs")
                 .join("play.example.com_25565")
-                .join("AnonBOT")
+                .join(account_folder("AnonBOT"))
                 .join("2026-10-16.log")
         );
         assert!(is_inside(&root, &path));

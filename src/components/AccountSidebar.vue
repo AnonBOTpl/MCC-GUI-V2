@@ -17,6 +17,7 @@ import { isConnectionLive, statusDotClass, statusKey } from '../log/status'
 import { useAccountsStore } from '../stores/accounts'
 import { useSettingsStore } from '../stores/settings'
 import { isSingleClick } from '../ui/click'
+import ConfirmModal from './ConfirmModal.vue'
 
 const emit = defineEmits<{ (event: 'addAccount'): void }>()
 
@@ -54,6 +55,25 @@ function startFromSidebar(event: MouseEvent, accountId: string, server: string):
 function stopFromSidebar(event: MouseEvent, id: string): void {
   if (!isSingleClick(event)) return
   void accounts.disconnectConnection(id)
+}
+
+/**
+ * Konto czekające na potwierdzenie usunięcia (R-19).
+ *
+ * Usunięcie konta zabiera też jego serwery i zamyka otwarte połączenia, więc
+ * pytamy zawsze - niezależnie od statusu. Trzymamy etykietę, bo po usunięciu
+ * nie ma już skądinąd wziąć nazwy do treści pytania.
+ */
+const pendingRemove = ref<{ id: string; label: string } | null>(null)
+
+function askRemove(id: string, label: string): void {
+  pendingRemove.value = { id, label }
+}
+
+async function confirmRemove(): Promise<void> {
+  const pending = pendingRemove.value
+  pendingRemove.value = null
+  if (pending) await accounts.removeAccount(pending.id)
 }
 
 /** Dodaje lub aktualizuje serwer; `connect` decyduje, czy startujemy proces. */
@@ -121,7 +141,7 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
           type="button"
           class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-800 hover:text-red-400"
           :title="t('sidebar.removeAccount')"
-          @click="accounts.removeAccount(account.id)"
+          @click="askRemove(account.id, account.label)"
         >
           <Trash2 :size="12" />
         </button>
@@ -293,5 +313,16 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
         :value="entry"
       />
     </datalist>
+
+    <!-- Potwierdzenie usunięcia konta (R-19). -->
+    <ConfirmModal
+      :open="pendingRemove !== null"
+      :title="t('confirm.removeAccountTitle')"
+      :message="t('confirm.removeAccountMessage', { label: pendingRemove?.label ?? '' })"
+      :confirm-label="t('confirm.removeAccountAction')"
+      danger
+      @close="pendingRemove = null"
+      @confirm="confirmRemove"
+    />
   </aside>
 </template>

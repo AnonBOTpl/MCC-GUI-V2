@@ -51,6 +51,15 @@
     "confirm": "Close and disconnect",
     "cancel": "Keep running"
   },
+  "confirm": {
+    "cancel": "Cancel",
+    "removeAccountTitle": "Remove account?",
+    "removeAccountMessage": "“{label}” will be removed with its server list. Any running connection is closed first.",
+    "removeAccountAction": "Remove account",
+    "closeTabTitle": "Close this tab?",
+    "closeTabMessage": "The connection to {server} is still running. Closing the tab disconnects it; the account and the server stay saved.",
+    "closeTabAction": "Close and disconnect"
+  },
   "accountType": {
     "microsoft": "Microsoft",
     "offline": "Offline"

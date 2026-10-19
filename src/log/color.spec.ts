@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_FOREGROUND,
+  LOG_BACKGROUND,
+  MINECRAFT_COLORS,
   formatStateAfter,
   initialFormat,
   parseSegments,
@@ -8,6 +10,21 @@ import {
   stripFormatting,
   stripSectionCodes,
 } from './color'
+
+/** Luminancja względna wg WCAG 2.x (sRGB). */
+function luminance(hex: string): number {
+  const channel = (offset: number): number => {
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+}
+
+function contrast(foreground: string, background: string): number {
+  const a = luminance(foreground)
+  const b = luminance(background)
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+}
 
 describe('parser kolorów §', () => {
   it('zwraca tekst bez kodów jako jeden segment', () => {
@@ -20,7 +37,7 @@ describe('parser kolorów §', () => {
   it('rozdziela kolory i zachowuje treść bez kodów', () => {
     const segments = parseSegments('§8[MCC] §aOK §ftext')
     expect(segments.map((segment) => segment.text)).toEqual(['[MCC] ', 'OK ', 'text'])
-    expect(segments.map((segment) => segment.color)).toEqual(['#555555', '#55ff55', '#ffffff'])
+    expect(segments.map((segment) => segment.color)).toEqual(['#8f8f8f', '#55ff55', '#ffffff'])
   })
 
   it('obsługuje kody formatowania (pogrubienie, kursywa, podkreślenie, przekreślenie)', () => {
@@ -84,7 +101,7 @@ describe('parser sekwencji ANSI', () => {
     expect(bold.bold).toBe(true)
     const reset = parseSegments('\u001b[1;31mX')[0]
     expect(reset.bold).toBe(true)
-    expect(reset.color).toBe('#aa0000')
+    expect(reset.color).toBe('#d94a4a')
     expect(parseSegments('\u001b[0mPlain')[0].bold).toBe(false)
   })
 
@@ -92,6 +109,32 @@ describe('parser sekwencji ANSI', () => {
     const segments = parseSegments('\u001b[31m§aMixed')
     expect(segments.map((segment) => segment.text)).toEqual(['Mixed'])
     expect(segments[0].color).toBe('#55ff55')
+  })
+})
+
+describe('kontrast palety na tle logu (R-07)', () => {
+  const codes = Object.keys(MINECRAFT_COLORS)
+
+  it('ma szesnaście różnych barw', () => {
+    expect(codes).toHaveLength(16)
+    expect(new Set(Object.values(MINECRAFT_COLORS)).size).toBe(16)
+  })
+
+  it.each(codes)('§%s ma co najmniej 4,5:1', (code) => {
+    expect(contrast(MINECRAFT_COLORS[code], LOG_BACKGROUND)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('zachowuje czytelną kolejność barw w każdej rodzinie', () => {
+    const ratio = (code: string): number => contrast(MINECRAFT_COLORS[code], LOG_BACKGROUND)
+    // Rozjaśnienie nie może zrównać „ciemnego” wariantu z jasnym.
+    expect(ratio('0')).toBeLessThan(ratio('8'))
+    expect(ratio('1')).toBeLessThan(ratio('9'))
+    expect(ratio('4')).toBeLessThan(ratio('c'))
+    expect(ratio('5')).toBeLessThan(ratio('d'))
+  })
+
+  it('domyślny kolor tekstu też przechodzi próg', () => {
+    expect(contrast(DEFAULT_FOREGROUND, LOG_BACKGROUND)).toBeGreaterThanOrEqual(4.5)
   })
 })
 
