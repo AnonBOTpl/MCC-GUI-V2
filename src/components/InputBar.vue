@@ -80,7 +80,7 @@ async function submit(): Promise<void> {
 
       <button
         type="submit"
-        class="flex h-8 shrink-0 items-center gap-1.5 rounded bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+        class="flex h-8 shrink-0 items-center gap-1.5 rounded bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
         :disabled="text.trim() === ''"
       >
         <Send :size="14" />

@@ -20,6 +20,22 @@ body {
 }
 
 /*
+ * R-48: użytkownik, który poprosił system o mniej ruchu, nie dostaje animacji
+ * przejść (modale, panele, toasty). `!important` jest tu celowe - ustawienie
+ * systemowe ma wygrać z klasami `transition-*` w komponentach.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
  * Log pokazuje surowe wyjście MCC i serwerów, w którym bywają znaki spoza BMP
  * (emoji, symbole z prywatnych zakresów, np. znaki wyboru realm serwera) oraz
  * znaki zastępcze U+FFFD z dekodowania niepoprawnych bajtów. Łańcuch fontów

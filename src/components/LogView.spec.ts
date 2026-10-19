@@ -496,3 +496,107 @@ describe('LogView - autoprzewijanie', () => {
     expect(wrapper.emitted('update:follow')).toEqual([[false]])
   })
 })
+
+describe('LogView - menu kontekstowe z klawiatury (R-46)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    )
+    vi.mocked(backend.copyText).mockReset()
+    vi.mocked(backend.copyText).mockResolvedValue(undefined)
+  })
+
+  // `attachTo` jest konieczne: bez elementu w drzewie dokumentu `document.activeElement`
+  // nigdy nie pokaże sfokusowanej pozycji menu (jsdom trzyma fokus w `<body>`).
+  let mounted: VueWrapper | null = null
+
+  afterEach(() => {
+    mounted?.unmount()
+    mounted = null
+    vi.unstubAllGlobals()
+  })
+
+  async function mountWithLines(count = 3) {
+    const wrapper = mount(LogView, {
+      props: { accountId: 'acc::srv', follow: true },
+      attachTo: document.body,
+      global: { plugins: [i18n] },
+    })
+    mounted = wrapper
+    const logs = useLogsStore()
+    logs.append(
+      'acc::srv',
+      Array.from({ length: count }, (_, index) => ({
+        stream: 'stdout' as const,
+        raw: `linia ${index + 1}`,
+        ts: index,
+      })),
+      'acc::srv',
+    )
+    logs.flushNow()
+    await nextTick()
+    return { wrapper, viewport: wrapper.find('.log-text.overflow-auto') }
+  }
+
+  it('Shift+F10 otwiera menu przy wierszu i fokusuje pierwszą pozycję', async () => {
+    const { wrapper, viewport } = await mountWithLines()
+
+    await viewport.trigger('keydown', { key: 'F10', shiftKey: true })
+    await nextTick()
+
+    const menu = wrapper.get('[role="menu"]')
+    // Zero z `getBoundingClientRect` w jsdom + 12 px odstępu od wiersza.
+    expect(menu.attributes('style')).toContain('left: 12px')
+
+    // Bez zaznaczenia „Kopiuj” jest wyłączone, więc fokus idzie na pierwszą
+    // **dostępną** pozycję („Kopiuj wszystko”).
+    const enabled = wrapper.findAll('[role="menuitem"]:not([disabled])')
+    expect(enabled.length).toBeGreaterThan(0)
+    expect(document.activeElement).toBe(enabled[0].element)
+  })
+
+  it('strzałki i Home/End chodzą po pozycjach menu', async () => {
+    const { wrapper, viewport } = await mountWithLines()
+    // Zaznaczony wiersz odblokowuje „Kopiuj”, więc menu ma dwie dostępne pozycje.
+    await wrapper.findAll('[data-seq]')[0].trigger('click')
+    await nextTick()
+
+    await viewport.trigger('keydown', { key: 'F10', shiftKey: true })
+    await nextTick()
+
+    const enabled = wrapper.findAll('[role="menuitem"]:not([disabled])')
+    const menu = wrapper.get('[role="menu"]')
+    expect(enabled).toHaveLength(2)
+
+    await menu.trigger('keydown', { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(enabled[1].element)
+
+    // Z końca lista wraca na początek.
+    await menu.trigger('keydown', { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(enabled[0].element)
+
+    await menu.trigger('keydown', { key: 'End' })
+    expect(document.activeElement).toBe(enabled[1].element)
+
+    await menu.trigger('keydown', { key: 'Home' })
+    expect(document.activeElement).toBe(enabled[0].element)
+  })
+
+  it('Escape zamyka menu i wraca fokusem do logu', async () => {
+    const { wrapper, viewport } = await mountWithLines()
+
+    await viewport.trigger('keydown', { key: 'F10', shiftKey: true })
+    await nextTick()
+    await wrapper.get('[role="menu"]').trigger('keydown', { key: 'Escape' })
+    await nextTick()
+
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(viewport.element)
+  })
+})

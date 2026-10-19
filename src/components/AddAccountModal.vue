@@ -118,7 +118,7 @@ async function submit(): Promise<void> {
         @click="form.type = option.value"
       >
         <span class="text-xs font-semibold text-slate-100">{{ t(option.titleKey) }}</span>
-        <span class="text-[11px] leading-snug text-slate-500">{{ t(option.hintKey) }}</span>
+        <span class="text-[11px] leading-snug text-slate-400">{{ t(option.hintKey) }}</span>
       </button>
     </div>
 
@@ -141,7 +141,7 @@ async function submit(): Promise<void> {
     <label class="flex flex-col gap-1">
       <span class="flex items-baseline gap-2 text-[11px] uppercase tracking-wide text-slate-400">
         {{ t('addAccount.name') }}
-        <span class="text-[10px] normal-case tracking-normal text-slate-500">
+        <span class="text-[10px] normal-case tracking-normal text-slate-400">
           {{ t('addAccount.nameHint') }}
         </span>
       </span>
@@ -175,7 +175,7 @@ async function submit(): Promise<void> {
       </button>
       <button
         type="submit"
-        class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
         :disabled="!canSubmit"
       >
         {{ t('addAccount.submit') }}

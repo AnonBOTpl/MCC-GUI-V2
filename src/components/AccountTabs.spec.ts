@@ -47,6 +47,20 @@ describe('AccountTabs - zamykanie zakładki (R-44)', () => {
     return mount(AccountTabs, { global: { plugins: [i18n] } })
   }
 
+  /** Zakładki dla podanych statusów (kolejno `srv0`, `srv1`, ...). */
+  function mountTabsWith(statuses: AccountStatus[]) {
+    const accounts = useAccountsStore()
+    accounts.accounts = [ACCOUNT]
+    accounts.connections = statuses.map((_, index) => ({
+      id: `acc-1::srv${index}`,
+      accountId: 'acc-1',
+      server: `srv${index}`,
+    }))
+    accounts.activeConnectionId = accounts.connections[0]?.id ?? null
+    accounts.statuses = Object.fromEntries(statuses.map((status, index) => [`acc-1::srv${index}`, status]))
+    return mount(AccountTabs, { global: { plugins: [i18n] } })
+  }
+
   function closeButton() {
     return `button[title="${i18n.global.t('tabs.close')}"]`
   }
@@ -84,6 +98,20 @@ describe('AccountTabs - zamykanie zakładki (R-44)', () => {
       wrapper.unmount()
       vi.clearAllMocks()
     }
+  })
+
+  it('karty mają ARIA, a panel jest powiązany z aktywną kartą (R-27)', () => {
+    const wrapper = mountTabsWith(['stopped', 'stopped'])
+    const tabs = wrapper.findAll('[role="tab"]')
+
+    expect(tabs).toHaveLength(2)
+    expect(tabs[0].attributes('aria-selected')).toBe('true')
+    expect(tabs[1].attributes('aria-selected')).toBe('false')
+    expect(tabs[0].attributes('aria-controls')).toBe('panel-acc-1::srv0')
+    expect(tabs[0].attributes('id')).toBe('tab-acc-1::srv0')
+    expect(wrapper.get('[role="tablist"]').attributes('aria-label')).toBe(
+      i18n.global.t('tabs.label'),
+    )
   })
 
   it('anulowanie pytania zostawia zakładkę i proces', async () => {

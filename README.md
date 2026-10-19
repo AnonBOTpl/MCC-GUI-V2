@@ -91,8 +91,9 @@ rendered. Long lines wrap to the window. While auto-scroll is on, the view follo
 scroll up and it stops following, scroll back to the bottom (or tick **Auto-scroll**) and it
 resumes. You can select and copy lines: click a line to select it, `Ctrl`+click to add or
 remove one, `Shift`+click for a range, `Ctrl`+`A` for everything, `Ctrl`+`C` to copy and `Esc`
-to clear. A right click gives **Copy** and **Copy all**. Copied text is clean — colour codes
-are stripped.
+to clear. A right click gives **Copy** and **Copy all**; the same menu opens from the keyboard
+with `Shift`+`F10` or the Menu key next to the first selected line, and arrows plus `Home` /
+`End` move inside it. Copied text is clean — colour codes are stripped.
 
 **Input.** Type chat text and press `Enter`, or type an MCC command starting with `/`. Tick
 **Send to all** to send the same line to every running connection, with a small delay between
@@ -227,7 +228,7 @@ Everything below is about working on the app, not about using it.
 
 ### Status
 
-Work in progress.
+Released as 2.0.0; all stages below are done.
 
 | Stage | What it covers | Status |
 |-------|----------------|--------|
@@ -239,11 +240,7 @@ Work in progress.
 | 5 | Log scroll polish | done (log filters are out of scope) |
 | 5b | UI robustness: the log no longer freezes with a full buffer | done |
 | 6 | Quick actions | done |
-| 7 | Language switch, final Polish translation, packaging | todo — see the note below |
-
-**Stage 7** has its language switch, app icon and installer done; what is left is a
-read-through of the Polish translation, which is why the row above is still `todo`.
-Everything from stages 0-6 works, including the `5b` robustness fix.
+| 7 | Language switch, final Polish translation, packaging | done |
 
 ### Toolchain
 

@@ -122,21 +122,21 @@ async function confirm(): Promise<void> {
       <div class="flex items-center gap-2">
         <code
           class="min-w-0 flex-1 truncate rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs"
-          :class="draftMccPath ? 'text-slate-200' : 'text-slate-500'"
+          :class="draftMccPath ? 'text-slate-200' : 'text-slate-400'"
           :title="draftMccPath ?? t('settings.mccNotSet')"
         >
           {{ draftMccPath ?? t('settings.mccNotSet') }}
         </code>
         <button
           type="button"
-          class="flex h-8 shrink-0 items-center gap-1.5 rounded bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-500"
+          class="flex h-8 shrink-0 items-center gap-1.5 rounded bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800"
           @click="browse"
         >
           <FileSearch :size="14" />
           {{ t('settings.browse') }}
         </button>
       </div>
-      <p class="text-xs text-slate-500">
+      <p class="text-xs text-slate-400">
         {{ t('settings.mccHint') }}
       </p>
     </section>
@@ -147,7 +147,7 @@ async function confirm(): Promise<void> {
         <p class="text-xs font-medium text-slate-200">
           {{ t('settings.restoreTabs') }}
         </p>
-        <p class="mt-0.5 text-xs text-slate-500">
+        <p class="mt-0.5 text-xs text-slate-400">
           {{ t('settings.restoreTabsHint') }}
         </p>
       </div>
@@ -173,7 +173,7 @@ async function confirm(): Promise<void> {
         <p class="text-xs font-medium text-slate-200">
           {{ t('settings.confirmClose') }}
         </p>
-        <p class="mt-0.5 text-xs text-slate-500">
+        <p class="mt-0.5 text-xs text-slate-400">
           {{ t('settings.confirmCloseHint') }}
         </p>
       </div>
@@ -199,7 +199,7 @@ async function confirm(): Promise<void> {
         <p class="text-xs font-medium text-slate-200">
           {{ t('settings.sendDelay') }}
         </p>
-        <p class="mt-0.5 text-xs text-slate-500">
+        <p class="mt-0.5 text-xs text-slate-400">
           {{ t('settings.sendDelayHint') }}
         </p>
       </div>
@@ -211,7 +211,7 @@ async function confirm(): Promise<void> {
           step="50"
           class="h-8 w-24 rounded border border-slate-700 bg-slate-950 px-2 text-right text-xs text-slate-100 outline-none focus:border-blue-500"
         >
-        <span class="text-xs text-slate-500">{{ t('settings.sendDelayUnit') }}</span>
+        <span class="text-xs text-slate-400">{{ t('settings.sendDelayUnit') }}</span>
       </div>
     </section>
 
@@ -221,7 +221,7 @@ async function confirm(): Promise<void> {
         <p class="text-xs font-medium text-slate-200">
           {{ t('settings.logBuffer') }}
         </p>
-        <p class="mt-0.5 text-xs text-slate-500">
+        <p class="mt-0.5 text-xs text-slate-400">
           {{ t('settings.logBufferHint') }}
         </p>
       </div>
@@ -233,7 +233,7 @@ async function confirm(): Promise<void> {
           step="500"
           class="h-8 w-24 rounded border border-slate-700 bg-slate-950 px-2 text-right text-xs text-slate-100 outline-none focus:border-blue-500"
         >
-        <span class="text-xs text-slate-500">{{ t('settings.logBufferUnit') }}</span>
+        <span class="text-xs text-slate-400">{{ t('settings.logBufferUnit') }}</span>
       </div>
     </section>
 
@@ -244,7 +244,7 @@ async function confirm(): Promise<void> {
           <p class="text-xs font-medium text-slate-200">
             {{ t('settings.chatLogToggle') }}
           </p>
-          <p class="mt-0.5 text-xs text-slate-500">
+          <p class="mt-0.5 text-xs text-slate-400">
             {{ t('settings.chatLogHint') }}
           </p>
         </div>
@@ -271,7 +271,7 @@ async function confirm(): Promise<void> {
         <div class="flex items-center gap-2">
           <code
             class="min-w-0 flex-1 truncate rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs"
-            :class="draftChatLogDir || settings.chatLogDir ? 'text-slate-200' : 'text-slate-500'"
+            :class="draftChatLogDir || settings.chatLogDir ? 'text-slate-200' : 'text-slate-400'"
             :title="draftChatLogDir ?? settings.chatLogDir ?? ''"
           >
             {{ draftChatLogDir ?? settings.chatLogDir ?? t('settings.chatLogDefault') }}
@@ -292,7 +292,7 @@ async function confirm(): Promise<void> {
             {{ t('settings.chatLogOpen') }}
           </button>
         </div>
-        <p class="text-xs text-slate-500">
+        <p class="text-xs text-slate-400">
           {{ t('settings.chatLogDirHint') }}
         </p>
         <button
@@ -310,7 +310,7 @@ async function confirm(): Promise<void> {
           <p class="text-xs font-medium text-slate-200">
             {{ t('settings.chatLogRetention') }}
           </p>
-          <p class="mt-0.5 text-xs text-slate-500">
+          <p class="mt-0.5 text-xs text-slate-400">
             {{ t('settings.chatLogRetentionHint') }}
           </p>
         </div>
@@ -322,7 +322,7 @@ async function confirm(): Promise<void> {
             step="1"
             class="h-8 w-24 rounded border border-slate-700 bg-slate-950 px-2 text-right text-xs text-slate-100 outline-none focus:border-blue-500"
           >
-          <span class="text-xs text-slate-500">{{ t('settings.chatLogRetentionUnit') }}</span>
+          <span class="text-xs text-slate-400">{{ t('settings.chatLogRetentionUnit') }}</span>
         </div>
       </div>
     </section>
@@ -338,7 +338,7 @@ async function confirm(): Promise<void> {
       </button>
       <button
         type="button"
-        class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
         :disabled="saving"
         @click="confirm"
       >

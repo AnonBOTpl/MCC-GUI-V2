@@ -21,6 +21,25 @@ export interface LogLine {
 export const DEFAULT_LOG_LIMIT = 5000
 
 /**
+ * Usuwa z mapy zmierzonych wysokości wpisy linii, których nie ma już w buforze (R-12).
+ *
+ * Kluczem mapy jest `seq`, więc po obcięciu bufora zostawałyby w niej wysokości
+ * linii, których nikt już nie wyrenderuje - mapa rosła z długością sesji, a nie
+ * z rozmiarem bufora. Zwraca liczbę usuniętych wpisów (0 = nic się nie zmieniło).
+ * `firstSeq === null` oznacza pusty bufor, czyli do usunięcia jest wszystko.
+ */
+export function pruneMeasured(measured: Map<number, number>, firstSeq: number | null): number {
+  let removed = 0
+  for (const seq of measured.keys()) {
+    if (firstSeq === null || seq < firstSeq) {
+      measured.delete(seq)
+      removed += 1
+    }
+  }
+  return removed
+}
+
+/**
  * Bufor linii. `push`/`pushMany` przyjmują już gotowe linie, więc bufor nie zna
  * źródła danych i można go testować bez Tauri.
  */

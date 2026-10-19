@@ -57,7 +57,7 @@ async function openLink(): Promise<void> {
           <span class="group relative inline-flex">
             <button
               type="button"
-              class="flex h-4 w-4 items-center justify-center rounded-full text-sky-300 transition-colors hover:bg-sky-900 hover:text-sky-100"
+              class="flex h-6 w-6 items-center justify-center rounded-full text-sky-300 transition-colors hover:bg-sky-900 hover:text-sky-100"
               :aria-label="t('loginBanner.helpLabel')"
             >
               <Info :size="12" />
@@ -99,7 +99,7 @@ async function openLink(): Promise<void> {
 
       <button
         type="button"
-        class="flex h-7 shrink-0 items-center gap-1.5 rounded bg-sky-600 px-2.5 text-xs font-medium text-white transition-colors hover:bg-sky-500"
+        class="flex h-7 shrink-0 items-center gap-1.5 rounded bg-sky-700 px-2.5 text-xs font-medium text-white transition-colors hover:bg-sky-800"
         @click="openLink"
       >
         <ExternalLink :size="13" />

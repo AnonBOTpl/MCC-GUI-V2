@@ -97,6 +97,7 @@
     "empty": "No accounts yet. Use “Add account”."
   },
   "tabs": {
+    "label": "Connections",
     "close": "Close tab",
     "unread": "{count} new line | {count} new lines"
   },
@@ -192,7 +193,9 @@
   },
   "empty": {
     "title": "No connection open",
-    "hint": "Use the “Add account” button in the accounts panel header, then click a server on the left."
+    "hint": "Use the “Add account” button in the accounts panel header, then click a server on the left.",
+    "chooseTitle": "No tab open",
+    "chooseHint": "Your accounts are in the panel on the left. Press the green play button next to a server to open its tab."
   },
   "errors": {
     "title": "Error",

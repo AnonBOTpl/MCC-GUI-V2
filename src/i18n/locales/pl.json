@@ -97,6 +97,7 @@
     "empty": "Brak kont. Użyj „Dodaj konto”."
   },
   "tabs": {
+    "label": "Połączenia",
     "close": "Zamknij kartę",
     "unread": "{count} nowa linia | {count} nowe linie | {count} nowych linii"
   },
@@ -192,7 +193,9 @@
   },
   "empty": {
     "title": "Brak otwartego połączenia",
-    "hint": "Użyj przycisku „Dodaj konto” w nagłówku panelu kont, a potem kliknij serwer po lewej."
+    "hint": "Użyj przycisku „Dodaj konto” w nagłówku panelu kont, a potem kliknij serwer po lewej.",
+    "chooseTitle": "Brak otwartej karty",
+    "chooseHint": "Konta są w panelu po lewej. Naciśnij zieloną strzałkę przy serwerze, żeby otworzyć jego kartę."
   },
   "errors": {
     "title": "Błąd",

@@ -222,10 +222,10 @@ async function confirm(): Promise<void> {
       <h2 class="text-sm font-semibold text-slate-100">
         {{ t('presets.title') }}
       </h2>
-      <span class="text-xs text-slate-500">{{ t('presets.subtitle') }}</span>
+      <span class="text-xs text-slate-400">{{ t('presets.subtitle') }}</span>
     </template>
 
-    <p class="text-[11px] text-slate-500">
+    <p class="text-[11px] text-slate-400">
       {{ t('presets.listHint') }}
     </p>
 
@@ -241,7 +241,7 @@ async function confirm(): Promise<void> {
       v-if="draft.length === 0"
       class="flex flex-col gap-1.5"
     >
-      <span class="text-[11px] uppercase tracking-wide text-slate-500">
+      <span class="text-[11px] uppercase tracking-wide text-slate-400">
         {{ t('presets.examples') }}
       </span>
       <div
@@ -253,7 +253,7 @@ async function confirm(): Promise<void> {
           <p class="truncate text-xs text-slate-200">
             {{ example.label }}
           </p>
-          <p class="truncate font-mono text-[11px] text-slate-500">
+          <p class="truncate font-mono text-[11px] text-slate-400">
             {{ example.text }}
           </p>
         </div>
@@ -281,7 +281,7 @@ async function confirm(): Promise<void> {
       >
         <span
           data-preset-grip
-          class="shrink-0 cursor-grab touch-none select-none text-slate-500"
+          class="shrink-0 cursor-grab touch-none select-none text-slate-400"
           :title="t('presets.dragHandle')"
           @pointerdown="onPointerDown($event, index)"
         >
@@ -337,7 +337,7 @@ async function confirm(): Promise<void> {
             v-model="row.label"
             type="text"
             maxlength="40"
-            class="h-[26px] rounded border border-slate-800 bg-slate-950 px-2 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500"
+            class="h-[26px] rounded border border-slate-800 bg-slate-950 px-2 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500"
             :placeholder="t('presets.labelPlaceholder')"
             :aria-label="t('presets.labelLabel')"
           >
@@ -346,7 +346,7 @@ async function confirm(): Promise<void> {
             type="text"
             maxlength="512"
             spellcheck="false"
-            class="h-[26px] rounded border border-slate-800 bg-slate-950 px-2 font-mono text-[11px] text-slate-300 outline-none placeholder:text-slate-600 focus:border-blue-500"
+            class="h-[26px] rounded border border-slate-800 bg-slate-950 px-2 font-mono text-[11px] text-slate-300 outline-none placeholder:text-slate-500 focus:border-blue-500"
             :placeholder="t('presets.textPlaceholder')"
             :aria-label="t('presets.textLabel')"
           >
@@ -354,7 +354,7 @@ async function confirm(): Promise<void> {
 
         <button
           type="button"
-          class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-800 hover:text-red-400"
+          class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-800 hover:text-red-400"
           :title="t('presets.delete')"
           @click="removeAt(index)"
         >
@@ -366,12 +366,12 @@ async function confirm(): Promise<void> {
     <!-- Dodawanie nowej akcji -->
     <div class="mt-1 flex flex-col gap-1.5 border-t border-slate-800 pt-3">
       <div class="flex items-baseline justify-between gap-2">
-        <span class="text-[11px] uppercase tracking-wide text-slate-500">
+        <span class="text-[11px] uppercase tracking-wide text-slate-400">
           {{ t('presets.addSection') }}
         </span>
         <span
           class="text-[11px] tabular-nums"
-          :class="atLimit ? 'text-amber-300' : 'text-slate-500'"
+          :class="atLimit ? 'text-amber-300' : 'text-slate-400'"
         >
           {{ countText }}
         </span>
@@ -381,7 +381,7 @@ async function confirm(): Promise<void> {
           v-model="newLabel"
           type="text"
           maxlength="40"
-          class="h-8 w-32 shrink-0 rounded border border-slate-700 bg-slate-950 px-2 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500"
+          class="h-8 w-32 shrink-0 rounded border border-slate-700 bg-slate-950 px-2 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500"
           :placeholder="t('presets.labelPlaceholder')"
           :aria-label="t('presets.labelLabel')"
         >
@@ -390,13 +390,13 @@ async function confirm(): Promise<void> {
           type="text"
           maxlength="512"
           spellcheck="false"
-          class="h-8 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 font-mono text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500"
+          class="h-8 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 font-mono text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500"
           :placeholder="t('presets.textPlaceholder')"
           :aria-label="t('presets.textLabel')"
         >
         <button
           type="button"
-          class="h-8 shrink-0 rounded bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+          class="h-8 shrink-0 rounded bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
           :disabled="!canAdd"
           @click="addNew"
         >
@@ -431,7 +431,7 @@ async function confirm(): Promise<void> {
         {{ t('presets.limitReached') }}
       </p>
 
-      <p class="text-[11px] text-slate-500">
+      <p class="text-[11px] text-slate-400">
         {{ t('presets.sendTip') }}
       </p>
     </div>
@@ -439,7 +439,7 @@ async function confirm(): Promise<void> {
     <template #footer>
       <span
         class="mr-auto text-xs"
-        :class="canSave ? 'text-slate-500' : 'text-amber-300'"
+        :class="canSave ? 'text-slate-400' : 'text-amber-300'"
       >
         {{ canSave ? t('presets.hint') : t('presets.invalidHint') }}
       </span>
@@ -453,7 +453,7 @@ async function confirm(): Promise<void> {
       </button>
       <button
         type="button"
-        class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
         :disabled="!canSave"
         @click="confirm"
       >

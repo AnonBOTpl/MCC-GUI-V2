@@ -51,7 +51,7 @@ function cancelText(): string {
       <button
         type="button"
         class="h-8 rounded px-4 text-xs font-medium text-white transition-colors"
-        :class="danger ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'"
+        :class="danger ? 'bg-red-600 hover:bg-red-700 active:bg-red-800' : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800'"
         @click="emit('confirm')"
       >
         {{ confirmLabel }}

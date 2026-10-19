@@ -88,7 +88,7 @@ async function confirm(): Promise<void> {
       </button>
       <button
         type="button"
-        class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        class="h-8 rounded bg-blue-600 px-4 text-xs font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
         :disabled="closing"
         @click="confirm"
       >

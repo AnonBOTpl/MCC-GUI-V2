@@ -92,8 +92,10 @@ widok nadąża za nowymi liniami; gdy przewiniesz w górę, przestaje nadążać
 dół (albo zaznaczysz **Autoprzewijanie**), znowu nadąża. Wiersze można zaznaczać i kopiować:
 klik zaznacza jeden wiersz, `Ctrl`+klik dodaje lub odejmuje kolejny, `Shift`+klik zaznacza
 zakres, `Ctrl`+`A` zaznacza wszystko, `Ctrl`+`C` kopiuje, `Esc` czyści zaznaczenie. Prawy
-przycisk myszy daje **Kopiuj** i **Kopiuj wszystko**. Skopiowany tekst jest czysty — kody
-kolorów są usuwane.
+przycisk myszy daje **Kopiuj** i **Kopiuj wszystko**; to samo menu otwiera się z klawiatury
+przez `Shift`+`F10` albo klawisz Menu przy pierwszym zaznaczonym wierszu, a strzałki oraz
+`Home` / `End` chodzą po jego pozycjach. Skopiowany tekst jest czysty — kody kolorów są
+usuwane.
 
 **Pole wpisywania.** Wpisz tekst czatu i naciśnij `Enter` albo wpisz komendę MCC zaczynającą
 się od `/`. Zaznacz **Wyślij do wszystkich**, żeby ta sama linia poszła do wszystkich
@@ -231,7 +233,7 @@ Wszystko poniżej dotyczy pracy nad aplikacją, a nie korzystania z niej.
 
 ### Stan projektu
 
-Prace w toku.
+Wydane jako 2.0.0; wszystkie etapy poniżej są gotowe.
 
 | Etap | Czego dotyczy | Status |
 |------|---------------|--------|
@@ -243,11 +245,7 @@ Prace w toku.
 | 5 | Dopracowanie przewijania logu | gotowe (filtry logu są poza zakresem) |
 | 5b | Niezawodność UI: log nie zamarza przy pełnym buforze | gotowe |
 | 6 | Szybkie akcje | gotowe |
-| 7 | Przełącznik języka, finalne tłumaczenie, pakowanie | do zrobienia — patrz notka niżej |
-
-**Etap 7** ma już przełącznik języka, ikonę i instalator; zostaje przeczytanie polskiego
-tłumaczenia, dlatego wiersz powyżej nadal jest `do zrobienia`. Wszystko z etapów 0-6 działa,
-razem z poprawką niezawodności `5b`.
+| 7 | Przełącznik języka, finalne tłumaczenie, pakowanie | gotowe |
 
 ### Środowisko
 

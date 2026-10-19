@@ -19,15 +19,19 @@ vi.mock('../api/backend', () => ({
 
 const CONNECTION: Connection = { id: 'acc-1::srv', accountId: 'acc-1', server: 'srv' }
 
-function mountHeader(status: AccountStatus) {
+function mountHeader(
+  status: AccountStatus,
+  connection: Connection = CONNECTION,
+  accountLabel = 'A',
+) {
   setActivePinia(createPinia())
   const accounts = useAccountsStore()
   // Nagłówek steruje połączeniem z listy store'u, więc musi ono tam być.
-  accounts.connections = [CONNECTION]
-  accounts.activeConnectionId = CONNECTION.id
-  accounts.statuses = { [CONNECTION.id]: status }
+  accounts.connections = [connection]
+  accounts.activeConnectionId = connection.id
+  accounts.statuses = { [connection.id]: status }
   const wrapper = mount(AccountHeader, {
-    props: { connection: CONNECTION, accountLabel: 'A', follow: true },
+    props: { connection, accountLabel, follow: true },
     global: { plugins: [i18n] },
   })
   return wrapper
@@ -52,6 +56,23 @@ async function doubleClickSecond(
   )
   await flushPromises()
 }
+
+describe('AccountHeader - długi adres serwera (R-26)', () => {
+  it('adres i etykieta się skracają, a grupa akcji nie zawija się', () => {
+    const longAddress = `${'a'.repeat(110)}.example.com`
+    const connection: Connection = { id: 'acc-1::long', accountId: 'acc-1', server: longAddress }
+    const wrapper = mountHeader('running', connection, 'Bardzo długa nazwa konta gracza')
+
+    const address = wrapper.get(`span[title="${longAddress}"]`)
+    expect(address.classes()).toEqual(expect.arrayContaining(['min-w-0', 'flex-1', 'truncate']))
+
+    const label = wrapper.get('span[title="Bardzo długa nazwa konta gracza"]')
+    expect(label.classes()).toContain('truncate')
+
+    // Przyciski akcji mają `shrink-0`, więc nie ściskają się przy długim adresie.
+    expect(wrapper.get('header > div').classes()).toContain('shrink-0')
+  })
+})
 
 describe('AccountHeader - dwuklik na Start', () => {
   beforeEach(() => {

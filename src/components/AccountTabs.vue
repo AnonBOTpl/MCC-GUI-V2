@@ -115,6 +115,11 @@ async function confirmClose(): Promise<void> {
   pendingClose.value = null
   if (id) await accounts.closeConnection(id)
 }
+
+/** Identyfikator karty dla ARIA; panel w `App.vue` używa `panel-<id>` (R-27). */
+function tabId(id: string): string {
+  return `tab-${id}`
+}
 </script>
 
 <template>
@@ -123,6 +128,8 @@ async function confirmClose(): Promise<void> {
     ref="tabsScroller"
     class="relative flex shrink-0 items-stretch overflow-x-auto border-b border-slate-800 bg-slate-950"
     role="tablist"
+    aria-orientation="horizontal"
+    :aria-label="t('tabs.label')"
     @wheel="onWheel"
   >
     <!-- Zakładka i przycisk zamknięcia to osobne elementy: zagnieżdżony
@@ -131,6 +138,7 @@ async function confirmClose(): Promise<void> {
       v-for="conn in accounts.connections"
       :key="conn.id"
       :ref="(el) => setTabElement(conn.id, el)"
+      role="presentation"
       class="flex shrink-0 items-stretch border-b-2 transition-colors"
       :class="
         conn.id === accounts.activeConnectionId
@@ -139,8 +147,10 @@ async function confirmClose(): Promise<void> {
       "
     >
       <button
+        :id="tabId(conn.id)"
         type="button"
         role="tab"
+        :aria-controls="`panel-${conn.id}`"
         :aria-selected="conn.id === accounts.activeConnectionId"
         class="flex min-w-44 max-w-60 items-center gap-2 py-2 pl-3 pr-1 text-left"
         :title="`${accountLabel(conn.accountId)} — ${conn.server}`"
@@ -170,6 +180,7 @@ async function confirmClose(): Promise<void> {
         type="button"
         class="my-1 mr-1 flex h-6 w-6 shrink-0 items-center justify-center self-center rounded text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
         :title="t('tabs.close')"
+        :aria-label="t('tabs.close')"
         @click.stop="requestClose(conn.id)"
       >
         <X :size="12" />

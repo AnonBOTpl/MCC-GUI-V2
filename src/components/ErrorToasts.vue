@@ -72,11 +72,11 @@ function messageFor(error: (typeof accounts.errors)[number]): string {
         </div>
         <button
           type="button"
-          class="shrink-0 rounded p-0.5 text-red-300 transition-colors hover:bg-red-900 hover:text-white"
+          class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-red-300 transition-colors hover:bg-red-900 hover:text-white"
           :title="t('errors.dismiss')"
           @click="accounts.dismissError(error.id)"
         >
-          <X :size="13" />
+          <X :size="14" />
         </button>
       </div>
     </TransitionGroup>

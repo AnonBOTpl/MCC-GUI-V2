@@ -18,6 +18,34 @@ installing it on Windows 11 was checked. Everything listed below is in that inst
   The other ten colours are untouched, and a unit test now checks all sixteen against the log
   background. ANSI colours take their values from the same table, so they get the fix too.
   Details in `docs/MCC_NOTES.md` §9.
+- **A long session no longer keeps row heights of lines that left the buffer.** The measured
+  heights are pruned together with the log buffer, so memory follows the buffer size instead of
+  the time the app has been open.
+
+**Accessibility and keyboard**
+
+- **Screen readers get proper tab roles:** each tab carries a name and points at the panel it
+  controls, and that panel is labelled by its tab.
+- **The focus outline and the tab arrow-key shortcuts are gone again.** Both slipped into this
+  batch without being asked for: a 2 px outline boxed in every focused element, and the arrow
+  keys (plus `Home`, `End` and `Delete`) took over the tab bar while `Tab` stopped reaching a
+  tab's close button. Neither is in this build — focus looks the way it did before, and `Tab`
+  walks through every tab and its close button again. The screen-reader roles listed above stay.
+- **The log menu opens with `Shift`+`F10` or the Menu key**, appears next to the first selected
+  line, starts on the first item that can be used, moves with the arrow keys and returns focus
+  to the log on `Esc`.
+- **Icon buttons are 24×24** (remove account, remove server, cancel adding a server, close a
+  message, the help icon in the login banner), and the server's remove button now appears when
+  it has keyboard focus, not only on hover.
+- **A long server address no longer pushes the header buttons off screen** — the address and
+  the account name shorten, and the buttons keep their place.
+- **Text is easier to read:** helper text moved from `slate-500`/`slate-600` to `slate-400`
+  (7.9:1 on the log background, 6.9:1 on panels), placeholders to `slate-500`, and button hover
+  states now keep at least 4.5:1 with white text (`blue-700`, `sky-700`, `red-700`).
+- **The empty screen says what to do next:** with no accounts it offers “Add account”; with
+  accounts but no tab it points at the green play button next to a server.
+- **Reduced motion is respected:** with that Windows setting on, tab, modal and toast
+  transitions stop animating.
 
 **Changed**
 

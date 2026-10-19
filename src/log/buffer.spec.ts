@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_LOG_LIMIT, LogBuffer } from './buffer'
+import { DEFAULT_LOG_LIMIT, LogBuffer, pruneMeasured } from './buffer'
+
+describe('pruneMeasured (R-12)', () => {
+  it('usuwa pomiary linii, których bufor już nie ma', () => {
+    const measured = new Map([
+      [0, 18],
+      [1, 36],
+      [2, 18],
+    ])
+    expect(pruneMeasured(measured, 1)).toBe(1)
+    expect([...measured.keys()]).toEqual([1, 2])
+  })
+
+  it('pusty bufor czyści całą mapę', () => {
+    const measured = new Map([[3, 18]])
+    expect(pruneMeasured(measured, null)).toBe(1)
+    expect(measured.size).toBe(0)
+  })
+
+  it('nie rusza mapy, gdy nic nie wypadło', () => {
+    const measured = new Map([
+      [2, 18],
+      [3, 18],
+    ])
+    expect(pruneMeasured(measured, 2)).toBe(0)
+    expect(measured.size).toBe(2)
+  })
+})
 
 describe('LogBuffer', () => {
   it('dopisuje linie i numeruje je rosnąco', () => {

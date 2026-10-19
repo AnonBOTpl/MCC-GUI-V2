@@ -47,14 +47,22 @@ function onReconnect(event: MouseEvent): void {
 <template>
   <header class="flex shrink-0 items-center gap-3 border-b border-slate-800 bg-slate-900/40 px-3 py-2">
     <span
-      class="h-2.5 w-2.5 rounded-full"
+      class="h-2.5 w-2.5 shrink-0 rounded-full"
       :class="statusDotClass(status)"
     />
-    <span class="text-sm font-semibold text-slate-100">{{ props.connection.server }}</span>
-    <span class="text-xs text-slate-400">{{ t(statusKey(status)) }}</span>
-    <span class="text-xs text-slate-500">{{ props.accountLabel }}</span>
+    <!-- Adres serwera może mieć do 120 znaków: zajmuje wolną przestrzeń i się
+         skraca, żeby nie wypychał przycisków poza okno (R-26). -->
+    <span
+      class="min-w-0 flex-1 truncate text-sm font-semibold text-slate-100"
+      :title="props.connection.server"
+    >{{ props.connection.server }}</span>
+    <span class="shrink-0 text-xs text-slate-400">{{ t(statusKey(status)) }}</span>
+    <span
+      class="max-w-40 shrink-0 truncate text-xs text-slate-400"
+      :title="props.accountLabel"
+    >{{ props.accountLabel }}</span>
 
-    <div class="ml-auto flex items-center gap-2">
+    <div class="ml-auto flex shrink-0 items-center gap-2">
       <label class="flex cursor-pointer items-center gap-1.5 text-xs text-slate-300">
         <input
           type="checkbox"
@@ -68,7 +76,7 @@ function onReconnect(event: MouseEvent): void {
       <button
         v-if="canStart"
         type="button"
-        class="flex h-7 items-center gap-1.5 rounded bg-blue-600 px-2 text-xs font-medium text-white transition-colors hover:bg-blue-500"
+        class="flex h-7 items-center gap-1.5 rounded bg-blue-600 px-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800"
         @click="onStart"
       >
         <Play :size="13" />

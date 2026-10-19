@@ -15,7 +15,7 @@
 import { computed, nextTick, onMounted, onUnmounted, onUpdated, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, ClipboardCopy, Copy } from '@lucide/vue'
-import type { LogLine } from '../log/buffer'
+import { pruneMeasured, type LogLine } from '../log/buffer'
 import {
   formatStateAfter,
   initialFormat,
@@ -125,6 +125,19 @@ const lineHeights = computed<number[]>(() => {
     const safe = Number.isFinite(rows) && rows >= 1 ? rows : 1
     return safe * ROW_HEIGHT
   })
+})
+
+/**
+ * Numer pierwszej linii w buforze. Zmienia się dopiero po obcięciu najstarszych
+ * linii (albo po wyczyszczeniu bufora), więc jest sygnałem do przycięcia mapy
+ * pomiarów (R-12).
+ */
+const firstSeq = computed(() => allLines.value[0]?.seq ?? null)
+
+// Obcięcie bufora: pomiary linii, których już nie ma, są bezużyteczne i rosły
+// z długością sesji zamiast z rozmiarem bufora (R-12).
+watch(firstSeq, (seq) => {
+  if (pruneMeasured(measured, seq) > 0) measuredVersion.value += 1
 })
 
 /** Skumulowane przesunięcia wierszy — do znalezienia widocznego zakresu i spacerów. */
@@ -274,13 +287,56 @@ function onRowMouseDown(event: MouseEvent): void {
   focusViewport()
 }
 
+/** Pozycje menu, po których chodzi klawiatura (wyłączonych nie ma w obiegu). */
+function menuItems(): HTMLElement[] {
+  const element = menuElement.value
+  if (!element) return []
+  return Array.from(
+    element.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])'),
+  )
+}
+
+/**
+ * Otwiera menu w punkcie ekranu i przenosi fokus na pierwszą dostępną pozycję (R-46).
+ * Współrzędne są przycinane do okna, żeby menu nie wystawało poza widok.
+ */
+function openMenuAt(x: number, y: number): void {
+  menu.value = {
+    x: Math.max(0, Math.min(x, window.innerWidth - MENU_WIDTH)),
+    y: Math.max(0, Math.min(y, window.innerHeight - MENU_HEIGHT)),
+  }
+  void nextTick(() => {
+    const items = menuItems()
+    ;(items[0] ?? menuElement.value)?.focus()
+  })
+}
+
 /** Menu kontekstowe: prawy przycisk myszy w widoku logu. */
 function onContextMenu(event: MouseEvent): void {
   focusViewport()
-  menu.value = {
-    x: Math.max(0, Math.min(event.clientX, window.innerWidth - MENU_WIDTH)),
-    y: Math.max(0, Math.min(event.clientY, window.innerHeight - MENU_HEIGHT)),
+  openMenuAt(event.clientX, event.clientY)
+}
+
+/**
+ * Menu z klawiatury (`Shift+F10` albo klawisz Menu). Zaczepiamy je przy pierwszej
+ * zaznaczonej linii (a bez zaznaczenia - przy początku widoku), bo otwieranie
+ * w punkcie (0, 0) było jedną z części R-46.
+ */
+function openMenuFromKeyboard(): void {
+  if (menu.value) return
+  const chosen = [...selection.value.selected].sort((a, b) => a - b)[0]
+  const seq = chosen ?? allLines.value[0]?.seq
+  const row =
+    seq === undefined
+      ? null
+      : viewport.value?.querySelector<HTMLElement>(`[data-seq="${seq}"]`)
+  if (row) {
+    const rect = row.getBoundingClientRect()
+    openMenuAt(rect.left + 12, rect.bottom + 2)
+    return
   }
+  const rect = viewport.value?.getBoundingClientRect()
+  openMenuAt((rect?.left ?? 0) + 24, (rect?.top ?? 0) + 24)
 }
 
 function closeMenu(): void {
@@ -343,6 +399,9 @@ function onKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
     if (menu.value) {
       closeMenu()
+      // Fokus wraca do logu - inaczej po zamknięciu menu z klawiatury nie ma
+      // gdzie kontynuować (R-46).
+      focusViewport()
       event.preventDefault()
       return
     }
@@ -352,6 +411,32 @@ function onKeydown(event: KeyboardEvent): void {
     }
     return
   }
+
+  // Pozycje otwartego menu: strzałki, Home i End (R-46).
+  if (menu.value && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    const items = menuItems()
+    if (items.length === 0) return
+    event.preventDefault()
+    const index = items.indexOf(document.activeElement as HTMLElement)
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : event.key === 'ArrowDown'
+            ? (index + 1) % items.length
+            : (index - 1 + items.length) % items.length
+    items[next].focus()
+    return
+  }
+
+  // `Shift+F10` i klawisz Menu to standardowe skróty menu kontekstowego (R-46).
+  if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
+    event.preventDefault()
+    openMenuFromKeyboard()
+    return
+  }
+
   if (!event.ctrlKey && !event.metaKey) return
 
   const key = event.key.toLowerCase()
@@ -631,7 +716,7 @@ const showJumpButton = computed(() => {
     >
       <div
         v-if="total === 0"
-        class="p-4 text-xs text-slate-500"
+        class="p-4 text-xs text-slate-400"
       >
         {{ t('log.empty') }}
       </div>
@@ -677,15 +762,16 @@ const showJumpButton = computed(() => {
       <div
         v-if="menu"
         ref="menuElement"
-        class="fixed z-30 min-w-[168px] rounded border border-slate-700 bg-slate-900 py-1 shadow-lg"
+        class="fixed z-30 min-w-[168px] rounded border border-slate-700 bg-slate-900 py-1 shadow-lg outline-none"
         :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
         role="menu"
+        tabindex="-1"
         @keydown="onKeydown"
       >
         <button
           type="button"
           role="menuitem"
-          class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-200 transition-colors enabled:hover:bg-slate-800 disabled:cursor-default disabled:text-slate-500"
+          class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-200 transition-colors enabled:hover:bg-slate-800 disabled:cursor-default disabled:text-slate-400"
           :disabled="selectedCount === 0"
           @click="copySelected"
         >
@@ -695,7 +781,7 @@ const showJumpButton = computed(() => {
         <button
           type="button"
           role="menuitem"
-          class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-200 transition-colors enabled:hover:bg-slate-800 disabled:cursor-default disabled:text-slate-500"
+          class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-200 transition-colors enabled:hover:bg-slate-800 disabled:cursor-default disabled:text-slate-400"
           :disabled="total === 0"
           @click="copyAll"
         >

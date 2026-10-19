@@ -99,16 +99,16 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
          (modal otwiera `App.vue`). Licznik pokazuje aktywne połączenia. -->
     <div class="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
       <span class="flex items-baseline gap-2">
-        <span class="text-[11px] uppercase tracking-wide text-slate-500">
+        <span class="text-[11px] uppercase tracking-wide text-slate-400">
           {{ t('sidebar.accounts') }}
         </span>
-        <span class="text-[11px] text-slate-600">
+        <span class="text-[11px] text-slate-400">
           {{ t('sidebar.activeAccounts', accounts.activeCount) }}
         </span>
       </span>
       <button
         type="button"
-        class="flex h-6 shrink-0 items-center gap-1 rounded bg-blue-600 px-2 text-[11px] font-medium text-white transition-colors hover:bg-blue-500"
+        class="flex h-6 shrink-0 items-center gap-1 rounded bg-blue-600 px-2 text-[11px] font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800"
         @click="emit('addAccount')"
       >
         <Plus :size="11" />
@@ -132,14 +132,14 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
           <p class="truncate text-xs font-semibold text-slate-100">
             {{ account.label }}
           </p>
-          <p class="truncate text-[11px] text-slate-500">
+          <p class="truncate text-[11px] text-slate-400">
             {{ account.type === 'microsoft' ? t('accountType.microsoft') : t('accountType.offline') }}
             · {{ account.login }}
           </p>
         </div>
         <button
           type="button"
-          class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-800 hover:text-red-400"
+          class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-800 hover:text-red-400"
           :title="t('sidebar.removeAccount')"
           @click="askRemove(account.id, account.label)"
         >
@@ -174,7 +174,7 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
         <button
           type="button"
           class="flex h-5 shrink-0 items-center gap-1 rounded px-1 text-[10px] transition-colors hover:bg-slate-800"
-          :class="entry.version ? 'text-blue-300' : 'text-slate-600'"
+          :class="entry.version ? 'text-blue-300' : 'text-slate-400'"
           :title="t('sidebar.setVersion')"
           @click="editVersion(account.id, entry)"
         >
@@ -210,7 +210,7 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
 
         <button
           type="button"
-          class="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-600 opacity-0 transition-colors group-hover:opacity-100 hover:bg-slate-800 hover:text-red-400"
+          class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 opacity-0 transition-colors group-hover:opacity-100 focus-visible:opacity-100 hover:bg-slate-800 hover:text-red-400"
           :title="t('sidebar.removeServer')"
           @click="accounts.removeServer(account.id, entry.address)"
         >
@@ -225,7 +225,7 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
       >
         <button
           type="button"
-          class="flex items-center gap-1 rounded px-1.5 py-1 pl-5 text-[11px] text-slate-500 transition-colors hover:text-blue-400"
+          class="flex items-center gap-1 rounded px-1.5 py-1 pl-5 text-[11px] text-slate-400 transition-colors hover:text-blue-400"
           @click="toggleAdd(account.id)"
         >
           <Plus :size="11" />
@@ -238,12 +238,12 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
         class="flex flex-col gap-1 px-1.5 pt-1 pl-5"
       >
         <div class="flex items-center justify-between px-0.5">
-          <span class="text-[10px] uppercase tracking-wide text-slate-500">
+          <span class="text-[10px] uppercase tracking-wide text-slate-400">
             {{ t('sidebar.addServer') }}
           </span>
           <button
             type="button"
-            class="flex h-5 w-5 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200"
+            class="flex h-6 w-6 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
             :title="t('sidebar.cancel')"
             @click="toggleAdd(account.id)"
           >
@@ -277,7 +277,7 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
         <div class="flex gap-1">
           <button
             type="button"
-            class="h-7 flex-1 rounded bg-blue-600 px-2 text-[11px] font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+            class="h-7 flex-1 rounded bg-blue-600 px-2 text-[11px] font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50"
             :disabled="draftServer.trim() === '' || busy"
             @click="submit(account.id, true)"
           >
@@ -292,7 +292,7 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
             {{ t('sidebar.saveOnly') }}
           </button>
         </div>
-        <p class="text-[10px] leading-snug text-slate-500">
+        <p class="text-[10px] leading-snug text-slate-400">
           {{ t('sidebar.versionHint') }}
         </p>
       </div>
@@ -300,7 +300,7 @@ async function submit(accountId: string, connect: boolean): Promise<void> {
 
     <p
       v-if="accounts.accounts.length === 0"
-      class="px-3 py-2 text-xs text-slate-500"
+      class="px-3 py-2 text-xs text-slate-400"
     >
       {{ t('sidebar.empty') }}
     </p>

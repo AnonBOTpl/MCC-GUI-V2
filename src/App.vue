@@ -72,6 +72,12 @@ function activeAccountLabel(): string {
   return accounts.activeAccount?.label ?? ''
 }
 
+/**
+ * Pusty stan ma dwa warianty (R-29): bez kont podpowiada dodanie konta, z kontami
+ * - otwarcie zakładki zieloną strzałką. Wcześniej oba pokazywały ten sam tekst.
+ */
+const hasAccounts = computed(() => accounts.accounts.length > 0)
+
 onMounted(async () => {
   await settings.load()
   // Konta wracają do panelu po lewej **zawsze**; przełącznik dotyczy tylko zakładek.
@@ -95,7 +101,15 @@ onMounted(async () => {
       <div class="flex min-w-0 flex-1 flex-col">
         <AccountTabs />
 
-        <template v-if="accounts.activeConnection">
+        <!-- `tabpanel` wskazuje na aktywną zakładkę (R-27): czytnik ekranu wie,
+             że ta treść należy do wybranej karty. -->
+        <div
+          v-if="accounts.activeConnection"
+          :id="`panel-${accounts.activeConnection.id}`"
+          role="tabpanel"
+          :aria-labelledby="`tab-${accounts.activeConnection.id}`"
+          class="flex min-h-0 flex-1 flex-col"
+        >
           <AccountHeader
             v-model:follow="follow"
             :connection="accounts.activeConnection"
@@ -108,7 +122,7 @@ onMounted(async () => {
           />
           <QuickActions />
           <InputBar />
-        </template>
+        </div>
 
         <main
           v-else
@@ -116,10 +130,10 @@ onMounted(async () => {
         >
           <div class="text-center">
             <h1 class="text-lg font-semibold text-slate-200">
-              {{ t('empty.title') }}
+              {{ hasAccounts ? t('empty.chooseTitle') : t('empty.title') }}
             </h1>
             <p class="mt-1 text-sm text-slate-400">
-              {{ t('empty.hint') }}
+              {{ hasAccounts ? t('empty.chooseHint') : t('empty.hint') }}
             </p>
           </div>
         </main>

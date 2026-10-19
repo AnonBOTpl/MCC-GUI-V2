@@ -66,7 +66,7 @@ function pillTitle(preset: Preset): string {
     <!-- Uchwyt: kreska trzyma się środka, opis i strzałka po prawej -->
     <button
       type="button"
-      class="group relative block h-[17px] w-full cursor-pointer text-slate-500 transition-colors hover:bg-blue-600/10 hover:text-slate-300"
+      class="group relative block h-[17px] w-full cursor-pointer text-slate-400 transition-colors hover:bg-blue-600/10 hover:text-slate-300"
       :aria-expanded="open"
       aria-controls="quick-actions-panel"
       :aria-label="open ? t('quickActions.collapse') : t('quickActions.expand')"
@@ -104,7 +104,7 @@ function pillTitle(preset: Preset): string {
         <!-- Maksymalnie trzy linie akcji (7+26+6+26+6+26+7 = 104 px); resztę się przewija -->
         <div class="qa-scroll max-h-[104px] overflow-y-auto overscroll-contain border-t border-dashed border-slate-800">
           <div class="flex flex-wrap items-center gap-1.5 px-3 py-[7px]">
-            <span class="text-[10.5px] uppercase tracking-wide text-slate-500">
+            <span class="text-[10.5px] uppercase tracking-wide text-slate-400">
               {{ t('quickActions.title') }}
             </span>
 
@@ -117,7 +117,7 @@ function pillTitle(preset: Preset): string {
 
             <span
               v-if="presets.loaded && shown.length === 0 && !noticeText"
-              class="text-xs text-slate-500"
+              class="text-xs text-slate-400"
             >
               {{ hasAnyPreset ? t('quickActions.allOff') : t('quickActions.empty') }}
             </span>
@@ -143,7 +143,7 @@ function pillTitle(preset: Preset): string {
             <button
               v-if="!hasAnyPreset"
               type="button"
-              class="flex h-[26px] shrink-0 items-center gap-1.5 rounded border border-slate-700 bg-blue-600 px-2.5 text-xs text-white transition-colors hover:bg-blue-500"
+              class="flex h-[26px] shrink-0 items-center gap-1.5 rounded border border-slate-700 bg-blue-600 px-2.5 text-xs text-white transition-colors hover:bg-blue-700 active:bg-blue-800"
               @click="editorOpen = true"
             >
               <Pencil :size="12" />
