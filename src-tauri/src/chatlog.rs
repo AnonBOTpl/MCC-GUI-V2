@@ -540,6 +540,10 @@ pub struct ChatLog {
     labels: RwLock<HashMap<String, String>>,
     /// Aktywne sesje, klucz to identyfikator połączenia.
     sessions: Mutex<HashMap<String, Session>>,
+    /// Znane cele zapisu (serwer i konto) per połączenie, także przy wyłączonym
+    /// zapisie. Dzięki temu włączenie logów w działającej sesji odtwarza jej
+    /// sesję zapisu, zamiast czekać na restart połączenia (S-03).
+    targets: Mutex<HashMap<String, (String, String)>>,
     next_generation: AtomicU64,
     /// Kanał błędów zapisu; w aplikacji trafiają stąd jako `app://error` (toast).
     errors: mpsc::UnboundedSender<AppError>,
@@ -559,6 +563,7 @@ impl ChatLog {
             enabled: AtomicBool::new(false),
             labels: RwLock::new(HashMap::new()),
             sessions: Mutex::new(HashMap::new()),
+            targets: Mutex::new(HashMap::new()),
             next_generation: AtomicU64::new(1),
             errors,
         })
@@ -567,8 +572,11 @@ impl ChatLog {
     /// Ustawia konfigurację z ustawień aplikacji.
     ///
     /// Zmiana folderu albo wyłączenie zapisu zamyka bieżące sesje znacznikiem
-    /// końca - żaden plik nie zostaje urwany w połowie.
-    pub fn apply_settings(&self, settings: &AppSettings) {
+    /// końca - żaden plik nie zostaje urwany w połowie. Gdy zapis jest nadal
+    /// włączony, sesje wracają od razu w nowej konfiguracji (S-03): bez tego
+    /// połączenie działające w chwili zmiany pisałoby dalej do starego folderu
+    /// albo nie pisało wcale.
+    pub fn apply_settings(self: &Arc<Self>, settings: &AppSettings) {
         let next = ChatLogConfig::from_settings(settings, self.default_root.clone());
         let changed = {
             let mut config = self
@@ -580,8 +588,25 @@ impl ChatLog {
             changed
         };
         self.enabled.store(next.enabled, Ordering::Relaxed);
-        if changed {
-            self.close_sessions();
+        if !changed {
+            return;
+        }
+
+        self.close_sessions();
+        if !next.enabled {
+            return;
+        }
+
+        // Snapshot celów pod blokadą, ale bez trzymania jej przy `begin_session`.
+        let targets: Vec<(String, String, String)> = {
+            let targets = lock(&self.targets);
+            targets
+                .iter()
+                .map(|(id, (server, account_id))| (id.clone(), server.clone(), account_id.clone()))
+                .collect()
+        };
+        for (connection_id, server, account_id) in targets {
+            self.begin_session(&connection_id, &server, &account_id);
         }
     }
 
@@ -625,6 +650,12 @@ impl ChatLog {
     /// Wołane raz przy starcie procesu (`status = starting`). Ponowne wołanie dla
     /// tego samego połączenia zastępuje poprzednią sesję (jej zadanie kończy się samo).
     pub fn begin_session(self: &Arc<Self>, connection_id: &str, server: &str, account_id: &str) {
+        // Cel zapamiętujemy **przed** sprawdzeniem `enabled`: włączenie logów
+        // w działającej sesji ma od razu odtworzyć jej zapis (S-03).
+        lock(&self.targets).insert(
+            connection_id.to_string(),
+            (server.to_string(), account_id.to_string()),
+        );
         if !self.enabled() {
             return;
         }
@@ -706,6 +737,16 @@ impl ChatLog {
     /// Wpisu nie usuwamy od razu: dopiero po krótkim okresie łaski, w którym
     /// zapisujemy jeszcze linie dochodzące po zakończeniu procesu.
     pub fn end_session(&self, connection_id: &str) {
+        // Proces tego połączenia się skończył, więc celu nie ma czego odtwarzać.
+        lock(&self.targets).remove(connection_id);
+        self.finish_session(connection_id);
+    }
+
+    /// Wysyła znacznik końca do sesji, ale **zostawia cel** zapisu.
+    ///
+    /// `apply_settings` używa tego przy zmianie konfiguracji: sesje trzeba
+    /// domknąć, a potem odtworzyć dla tych samych połączeń (S-03).
+    fn finish_session(&self, connection_id: &str) {
         let Some(tx) = ({
             let sessions = lock(&self.sessions);
             sessions
@@ -759,13 +800,16 @@ impl ChatLog {
     }
 
     /// Kończy wszystkie aktywne sesje (bez czekania na zadania).
+    ///
+    /// Cele zapisu zostają: `apply_settings` odtwarza z nich sesje w nowej
+    /// konfiguracji (S-03).
     fn close_sessions(&self) {
         let ids: Vec<String> = {
             let sessions = lock(&self.sessions);
             sessions.keys().cloned().collect()
         };
         for id in ids {
-            self.end_session(&id);
+            self.finish_session(&id);
         }
     }
 
@@ -1348,6 +1392,73 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// S-03: włączenie zapisu w **działającej** sesji ma zacząć pisać od razu.
+    ///
+    /// Sesję tworzył dotąd wyłącznie status `starting`, więc po włączeniu opcji
+    /// w ustawieniach `write_line` nie znajdował sesji i gubił linie.
+    #[tokio::test]
+    async fn enabling_logs_mid_session_starts_writing() {
+        let root = temp_root("enable-mid-session");
+        let (tx_errors, _rx_errors) = errors();
+        let log = ChatLog::new(root.clone(), tx_errors);
+        log.apply_settings(&settings(false, None, 30));
+        log.set_account_labels(&[account("acc-1", "Bot")]);
+
+        let id = "acc-1::host:25565";
+        log.begin_session(id, "host:25565", "acc-1");
+        log.write_line(id, LogStream::Stdout, "przed włączeniem");
+
+        // Użytkownik włącza zapis, nie restartując połączenia.
+        log.apply_settings(&settings(true, None, 30));
+        log.write_line(id, LogStream::Stdout, "po włączeniu");
+        log.end_session(id);
+
+        let path = log_file_path(&root, "host:25565", "Bot", &local_now().date());
+        let content = wait_for_file(&path, "po włączeniu").await;
+        assert!(!content.contains("przed włączeniem"), "{content}");
+        assert!(content.contains("=== session start"), "{content}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// S-03: zmiana folderu logów przenosi zapis **działającego** połączenia.
+    #[tokio::test]
+    async fn changing_log_folder_mid_session_moves_writing() {
+        let first = temp_root("root-change-first");
+        let second = temp_root("root-change-second");
+        let (tx_errors, _rx_errors) = errors();
+        // Domyślny folder to drugi katalog - sprawdzamy wyłącznie własny wybór.
+        let log = ChatLog::new(second.clone(), tx_errors);
+        log.set_account_labels(&[account("acc-1", "Bot")]);
+
+        let id = "acc-1::host:25565";
+        log.apply_settings(&settings(
+            true,
+            Some(first.to_str().expect("ścieżka testowa")),
+            30,
+        ));
+        log.begin_session(id, "host:25565", "acc-1");
+        log.write_line(id, LogStream::Stdout, "w starym folderze");
+
+        log.apply_settings(&settings(
+            true,
+            Some(second.to_str().expect("ścieżka testowa")),
+            30,
+        ));
+        log.write_line(id, LogStream::Stdout, "w nowym folderze");
+        log.end_session(id);
+
+        let old_path = log_file_path(&first, "host:25565", "Bot", &local_now().date());
+        let new_path = log_file_path(&second, "host:25565", "Bot", &local_now().date());
+        let old = wait_for_file(&old_path, "w starym folderze").await;
+        let new = wait_for_file(&new_path, "w nowym folderze").await;
+        assert!(!old.contains("w nowym folderze"), "{old}");
+        assert!(!new.contains("w starym folderze"), "{new}");
+
+        let _ = std::fs::remove_dir_all(&first);
+        let _ = std::fs::remove_dir_all(&second);
     }
 
     /// Zmiana dnia w **działającej** sesji przenosi zapis do pliku z nową datą.

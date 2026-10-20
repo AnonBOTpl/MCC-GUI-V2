@@ -13,6 +13,7 @@ vi.mock('../api/backend', () => ({
   backend: {
     addAccount: vi.fn(),
     saveAccounts: vi.fn(),
+    removeAccount: vi.fn(),
   },
   events: {},
 }))
@@ -22,6 +23,7 @@ describe('AddAccountModal', () => {
     setActivePinia(createPinia())
     vi.mocked(backend.addAccount).mockResolvedValue(undefined)
     vi.mocked(backend.saveAccounts).mockResolvedValue(undefined)
+    vi.mocked(backend.removeAccount).mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -156,5 +158,28 @@ describe('AddAccountModal', () => {
     expect(wrapper.emitted('close')).toBeUndefined()
     // Toast opisuje kod błędu z Rusta, więc żaden surowy tekst nie idzie do UI.
     expect(useAccountsStore().errors[0]?.code).toBe('account.alreadyExists')
+  })
+
+  /**
+   * S-05: zapis pliku kont może się nie udać (np. `accounts.json` w kwarantannie).
+   * Wcześniej modal zamykał się jak po sukcesie, a konto żyło tylko w pamięci.
+   */
+  it('nieudany zapis kont nie jest pokazywany jako dodane konto (S-05)', async () => {
+    vi.mocked(backend.saveAccounts).mockRejectedValue({
+      code: 'store.fileQuarantined',
+      params: { file: 'accounts.json' },
+    })
+    const wrapper = await openModal()
+
+    await loginField(wrapper).setValue('bot@example.com')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    const accounts = useAccountsStore()
+    expect(wrapper.emitted('close')).toBeUndefined()
+    // Konto nie jest udawane: stan w pamięci też został cofnięty.
+    expect(accounts.accounts).toHaveLength(0)
+    expect(backend.removeAccount).toHaveBeenCalledTimes(1)
+    expect(accounts.errors[0]?.code).toBe('store.fileQuarantined')
   })
 })

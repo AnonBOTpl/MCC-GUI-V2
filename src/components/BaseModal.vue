@@ -15,6 +15,7 @@
 
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
+import { isTopModal, popModal, pushModal } from '../ui/modalStack'
 
 const props = withDefaults(
   defineProps<{
@@ -42,6 +43,8 @@ const props = withDefaults(
 const emit = defineEmits<{ (event: 'close'): void; (event: 'submit'): void }>()
 
 const panel = ref<HTMLElement | null>(null)
+/** Wpis w stosie modali; tylko wierzchni modal obsługuje `Esc` i `Tab` (S-02). */
+const modalId = Symbol('modal')
 /** Element, który miał fokus przed otwarciem - tu wraca po zamknięciu. */
 let restoreFocus: HTMLElement | null = null
 
@@ -66,6 +69,9 @@ function setPanel(element: unknown): void {
 /** `Esc` zamyka, `Tab`/`Shift+Tab` nie wychodzą poza panel. */
 function onKeydown(event: KeyboardEvent): void {
   if (!props.open) return
+  // Modal pod wierzchem nie może reagować: jeden `Esc` zamykałby oba naraz,
+  // a druga pułapka fokusu walczyłaby z tą na wierzchu.
+  if (!isTopModal(modalId)) return
   if (event.key === 'Escape') {
     if (!props.dismissible) return
     event.preventDefault()
@@ -111,7 +117,10 @@ watch(
   () => props.open,
   async (open) => {
     if (open) {
+      pushModal(modalId)
       restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    } else {
+      popModal(modalId)
     }
     await nextTick()
     if (open) {
@@ -130,7 +139,12 @@ watch(
 )
 
 onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  // Modal zamknięty przez odmontowanie (np. koniec życia widoku) nie może
+  // zostać w stosie i blokować klawiatury kolejnym oknom.
+  popModal(modalId)
+})
 </script>
 
 <template>

@@ -60,7 +60,7 @@ async function browse(): Promise<void> {
 
 /** Wybór folderu logów czatu - także walidowany po stronie Rusta. */
 async function browseChatLogDir(): Promise<void> {
-  const picked = await settings.pickChatLogFolder()
+  const picked = await settings.pickChatLogFolder(t('settings.chatLogPickTitle'))
   if (picked) draftChatLogDir.value = picked
 }
 

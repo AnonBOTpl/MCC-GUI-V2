@@ -98,6 +98,39 @@ describe('BaseModal', () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
+  /**
+   * S-02: każdy modal wieszał własny nasłuch, więc gdy nad ustawieniami stało
+   * pytanie o zamknięcie, jeden `Esc` zamykał oba naraz.
+   */
+  it('Esc zamyka tylko modal na wierzchu (S-02)', async () => {
+    const bottom = mountModal({ open: false, label: 'Dolny' })
+    const top = mountModal({ open: false, label: 'Górny' })
+    await bottom.setProps({ open: true })
+    await nextTick()
+    await top.setProps({ open: true })
+    await nextTick()
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true }),
+    )
+    await nextTick()
+
+    expect(top.emitted('close')).toHaveLength(1)
+    expect(bottom.emitted('close')).toBeUndefined()
+
+    // Po zamknięciu wierzchniego klawiaturę przejmuje modal pod nim.
+    await top.setProps({ open: false })
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true }),
+    )
+    await nextTick()
+
+    expect(bottom.emitted('close')).toHaveLength(1)
+
+    top.unmount()
+    bottom.unmount()
+  })
+
   it('przy dismissible=false Esc i klik poza panelem nic nie robią', async () => {
     const wrapper = mountModal({ dismissible: false })
 

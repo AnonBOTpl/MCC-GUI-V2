@@ -119,6 +119,10 @@ pub struct AppState {
     /// Bieżące ustawienia (znormalizowane). Trzymane też w pamięci, żeby
     /// komendy nie czytały pliku przy każdym wywołaniu.
     pub settings: Mutex<AppSettings>,
+    /// Pola ustawień, które przy starcie nie przeszły walidacji (R-10).
+    /// Czekają na pierwszą komendę z frontendu - wtedy okno ma już podłączone
+    /// nasłuchy i toast nie ginie.
+    pub settings_problems: std::sync::Mutex<Vec<AppError>>,
     /// Zapis logów czatu (`PLAN.md` §5).
     pub chat_log: Arc<ChatLog>,
     /// Czy użytkownik potwierdził już zamknięcie okna. Dzięki temu drugie
@@ -142,6 +146,32 @@ fn flush_store_warnings(app: &AppHandle, store: &Store) {
             },
         ) {
             tracing::warn!(%error, "nie udało się pokazać ostrzeżenia o pliku danych");
+        }
+    }
+}
+
+/// Pokazuje ostrzeżenia o polach ustawień, które przy starcie nie przeszły
+/// walidacji (R-10).
+///
+/// Wywoływane raz, przy pierwszym `get_settings`: wtedy okno ma już podłączone
+/// nasłuchy. Komunikat mówi, **które** pole zostało zastąpione domyślnym,
+/// zamiast po cichu zerować całe ustawienia.
+fn flush_settings_problems(app: &AppHandle, state: &AppState) {
+    let problems = std::mem::take(
+        &mut *state
+            .settings_problems
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()),
+    );
+    for problem in problems {
+        if let Err(error) = app.emit(
+            "app://error",
+            ErrorPayload {
+                code: problem.code,
+                params: problem.params,
+            },
+        ) {
+            tracing::warn!(%error, "nie udało się pokazać ostrzeżenia o ustawieniach");
         }
     }
 }
@@ -181,19 +211,43 @@ pub async fn open_chat_log_folder(
         })
 }
 
+/// Najdłuższy tytuł natywnego okna przyjmowany z frontendu.
+const MAX_DIALOG_TITLE: usize = 100;
+
+/// Sprawdza tytuł natywnego okna podany przez UI.
+///
+/// Tytuł pochodzi z warstwy i18n (frontend tłumaczy go na bieżący język), więc
+/// Rust nie trzyma tu żadnego własnego tekstu dla człowieka (S-06). Walidujemy
+/// tylko długość i znaki sterujące - tak samo jak każdy inny tekst z UI.
+fn validate_dialog_title(raw: &str) -> Result<String, AppError> {
+    let trimmed = raw.trim();
+    let valid = !trimmed.is_empty()
+        && trimmed.chars().count() <= MAX_DIALOG_TITLE
+        && !trimmed.chars().any(char::is_control);
+    if !valid {
+        return Err(AppError::new("dialog.titleInvalid"));
+    }
+    Ok(trimmed.to_string())
+}
+
 /// Otwiera natywne okno wyboru folderu logów czatu.
 ///
-/// `None` oznacza anulowanie. Wybrany folder przechodzi tę samą walidację co
-/// przy zapisie ustawień (`validate_chat_log_dir`), żeby błąd pokazał się od razu,
-/// a nie dopiero po zapisaniu ustawień.
+/// `title` to wytłumaczony tytuł okna z frontendu. `None` oznacza anulowanie.
+/// Wybrany folder przechodzi tę samą walidację co przy zapisie ustawień
+/// (`validate_chat_log_dir`), żeby błąd pokazał się od razu, a nie dopiero po
+/// zapisaniu ustawień.
 #[tauri::command]
-pub async fn pick_chat_log_folder(app: AppHandle) -> Result<Option<String>, AppError> {
+pub async fn pick_chat_log_folder(
+    app: AppHandle,
+    title: String,
+) -> Result<Option<String>, AppError> {
     use tauri_plugin_dialog::DialogExt;
 
+    let title = validate_dialog_title(&title)?;
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .set_title("Chat logs")
+        .set_title(title)
         .pick_folder(move |picked| {
             let _ = tx.send(picked);
         });
@@ -273,6 +327,7 @@ pub async fn get_settings(
     state: State<'_, AppState>,
 ) -> Result<AppSettings, AppError> {
     flush_store_warnings(&app, &state.store);
+    flush_settings_problems(&app, &state);
     Ok(state.settings.lock().await.clone())
 }
 

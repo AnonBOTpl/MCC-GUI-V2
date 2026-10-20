@@ -33,6 +33,7 @@
     "chatLogToggle": "Save chat logs to files",
     "chatLogHint": "Everything each account sees and says is appended to a file for the day, including private messages from other players - those stay on this computer. Login codes and links are never written down.",
     "chatLogDir": "Log folder",
+    "chatLogPickTitle": "Choose the chat log folder",
     "chatLogDefault": "Default location",
     "chatLogChange": "Change",
     "chatLogOpen": "Open folder",
@@ -220,7 +221,8 @@
       "entriesSkipped": "Skipped {count} entry in {file} that could not be read | Skipped {count} entries in {file} that could not be read"
     },
     "dialog": {
-      "failed": "Could not open the file picker."
+      "failed": "Could not open the file picker.",
+      "titleInvalid": "Could not open the picker: the window title was missing."
     },
     "server": {
       "invalid": "That server address is not valid.",

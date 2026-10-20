@@ -230,17 +230,20 @@ export const useAccountsStore = defineStore('accounts', () => {
   }
 
   /**
-   * Zapisuje bieżącą listę kont na dysk. Błąd tylko raportujemy (nie blokuje UI).
+   * Zapisuje bieżącą listę kont na dysk. Błąd raportujemy i zwracamy `false`:
+   * wywołujący musi wiedzieć, że zmiana **nie jest utrwalona** (S-05).
    *
    * `accounts` to **zawsze pełna lista z pliku plus zmiany z panelu**: przy starcie
    * wczytujemy zapisane konta bez względu na przełącznik zakładek, więc zapis nie
    * może zgubić niczego, czego użytkownik nie widzi.
    */
-  async function persist(): Promise<void> {
+  async function persist(): Promise<boolean> {
     try {
       await backend.saveAccounts(accounts.value)
+      return true
     } catch (error) {
       pushError(error as ErrorPayload)
+      return false
     }
   }
 
@@ -300,19 +303,32 @@ export const useAccountsStore = defineStore('accounts', () => {
     }
   }
 
-  /** Dodaje konto (bez uruchamiania czegokolwiek). */
+  /**
+   * Dodaje konto (bez uruchamiania czegokolwiek).
+   *
+   * `true` oznacza, że konto jest **także na dysku**. Gdy zapis się nie uda,
+   * cofamy rejestrację i wpis w pamięci, żeby formularz nie zamknął się
+   * z fałszywym „dodano” (S-05).
+   */
   async function addAccount(input: NewAccount): Promise<boolean> {
     const account: Account = { ...input, servers: [], tabOrder: nextTabOrder() }
     accounts.value = [...accounts.value, account]
     try {
       await backend.addAccount(account)
-      await persist()
-      return true
     } catch (error) {
       accounts.value = accounts.value.filter((item) => item.id !== account.id)
       pushError(error as ErrorPayload)
       return false
     }
+    if (await persist()) return true
+
+    accounts.value = accounts.value.filter((item) => item.id !== account.id)
+    try {
+      await backend.removeAccount(account.id)
+    } catch (error) {
+      pushError(error as ErrorPayload)
+    }
+    return false
   }
 
   /** Usuwa konto razem z jego otwartymi połączeniami. */
@@ -371,10 +387,12 @@ export const useAccountsStore = defineStore('accounts', () => {
         ? { ...account, servers: upsertServer(account.servers, trimmed, version) }
         : account,
     )
-    await persist()
+    // Bez utrwalenia nie startujemy procesu i nie zamykamy formularza (S-05).
+    // Powtórka jest bezpieczna: ten sam adres tylko aktualizuje wpis.
+    const saved = await persist()
 
-    if (connect) await openConnection(accountId, trimmed)
-    return true
+    if (connect && saved) await openConnection(accountId, trimmed)
+    return saved
   }
 
   /** Usuwa serwer z konta (Rust zatrzymuje jego proces). */

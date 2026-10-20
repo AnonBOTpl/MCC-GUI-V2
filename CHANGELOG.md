@@ -2,9 +2,47 @@
 
 All notable changes to MCC GUI V2. Dates are the days the work happened, newest first.
 
-Version **2.0.0** is published. Its installer was rebuilt on 19 October 2026 from the current
-tree and the release asset was replaced with that build (new SHA256 in the release notes);
-installing it on Windows 11 was checked. Everything listed below is in that installer.
+Version **2.0.0** is published. Its installer was rebuilt on 20 October 2026 from the current
+tree and the release asset was replaced with that build (new SHA256 in the release notes).
+The 19 October build was installed on Windows 11 to check it; the 20 October build has not
+been installed by hand yet. Everything listed below is in the current installer.
+
+## 20 October 2026
+
+**Fixed**
+
+- **One Enter sends one message.** The input field is cleared only after the backend answers,
+  so a second Enter (or a double click on Send) while the first send was still in flight sent
+  the same text again — and with “Send to all” that meant two overlapping rounds with the
+  per-account delay. Submits are now ignored until the send finishes; text typed meanwhile
+  stays in the field.
+- **`Esc` closes only the top dialog.** Settings and the close-confirmation each listened for
+  `Esc` on the window, so one press closed both — and the question about quitting took the
+  unsaved settings with it. Only the topmost modal handles the keyboard now; `Tab` is trapped
+  by that one dialog too instead of by all of them at once.
+- **The chat-log switch and folder apply to running connections.** Saving is stored per
+  connection, and a session was created only when that connection started: turning saving on
+  mid-session wrote nothing, and changing the folder left the old writer pointing at the old
+  place (or stopped writing until the connection restarted). Both now take effect on the next
+  line, without restarting anything.
+- **Checking a log folder no longer touches your files.** The write test used a fixed name
+  (`.mcc-gui-write-test`) and wrote an empty file before deleting it, so a file you happened to
+  keep under that name in the chosen folder was wiped. The probe now gets a unique name
+  (process id and a counter), is created with `create_new` and only the probe's own file is
+  removed.
+- **An account that could not be saved is no longer reported as added.** When `accounts.json`
+  cannot be written (for example because an unreadable copy was quarantined at the start), the
+  dialog used to close as on success while the account lived only in memory and disappeared on
+  the next launch. The save result now reaches the form: the dialog stays open with your input,
+  the reason is shown, and the half-added account is rolled back. Adding a server reports the
+  same way and does not start a connection for a server that was not stored.
+- **The folder picker speaks your language.** Its window title was a hard-coded English string
+  in Rust; it now comes from the interface translation like every other visible text.
+- **A moved or deleted `MinecraftClient.exe` no longer resets your settings.** One invalid field
+  rejected the whole settings file at startup, and the next save wrote the defaults over the
+  rest. Only the broken field falls back now (the app also says which one), so the delay,
+  buffer size, retention, log folder and switches survive; the Settings dialog opens to ask
+  for the exe again.
 
 ## 19 October 2026
 

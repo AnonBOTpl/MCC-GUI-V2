@@ -138,10 +138,19 @@ pub fn run() {
             // startem pętli zdarzeń, a menedżer potrzebuje ścieżki MCC od razu.
             let store = Arc::new(Store::new(data_dir));
             let loaded = tauri::async_runtime::block_on(store.load_settings());
-            let settings = settings::normalize(loaded).unwrap_or_else(|error| {
-                tracing::warn!(%error, "niepoprawne ustawienia na dysku; używam domyślnych");
-                AppSettings::default()
-            });
+            // Ustawienia z dysku normalizujemy **łagodnie** (R-10): nieaktualna
+            // ścieżka do MCC (np. po przeniesieniu folderu) albo jedna zła liczba
+            // zeruje tylko swoje pole, a nie cały obiekt. Wcześniej taki błąd
+            // zastępował wszystkie ustawienia domyślnymi, a następny zapis
+            // utrwalał je na dysku.
+            let settings::LoadedSettings { settings, problems } =
+                settings::normalize_loaded(loaded);
+            for problem in &problems {
+                tracing::warn!(
+                    code = %problem.code,
+                    "ustawienia: pole nie przeszło walidacji, używam wartości domyślnej"
+                );
+            }
 
             let mcc_exe = resolve_mcc_exe(&settings);
             if mcc_exe.is_none() {
@@ -165,6 +174,7 @@ pub fn run() {
                 manager: manager.clone(),
                 store,
                 settings: tokio::sync::Mutex::new(settings),
+                settings_problems: std::sync::Mutex::new(problems),
                 chat_log: chat_log.clone(),
                 close_confirmed: AtomicBool::new(false),
             });

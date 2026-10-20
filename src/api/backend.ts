@@ -129,11 +129,12 @@ export const backend = {
   /** Efektywny folder logów czatu (własny użytkownika albo domyślny). */
   chatLogDir: () => call<string>('chat_log_dir'),
   /**
-   * Otwiera natywne okno wyboru folderu logów czatu. Ścieżkę bierze z Rusta
-   * (walidacja: pełna ścieżka, folder do utworzenia, zapisywalny).
+   * Otwiera natywne okno wyboru folderu logów czatu. Tytuł okna przychodzi
+   * z warstwy i18n (Rust nie trzyma tekstów dla człowieka), a ścieżkę bierze
+   * z Rusta (walidacja: pełna ścieżka, folder do utworzenia, zapisywalny).
    * `null` oznacza anulowanie.
    */
-  pickChatLogFolder: () => call<string | null>('pick_chat_log_folder'),
+  pickChatLogFolder: (title: string) => call<string | null>('pick_chat_log_folder', { title }),
   /** Otwiera folder logów czatu w Eksploratorze (ścieżka pochodzi z ustawień). */
   openChatLogFolder: () => call<void>('open_chat_log_folder'),
   /** Czy diagnostyka zamrożenia widoku logu jest włączona (`MCC_GUI_DIAG=1`). */

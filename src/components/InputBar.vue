@@ -9,6 +9,12 @@ const { t } = useI18n()
 const accounts = useAccountsStore()
 
 const text = ref('')
+/**
+ * Trwa wysyłka poprzedniego wpisu. Bez tej flagi drugi `submit` (Enter albo
+ * dwuklik) w trakcie oczekiwania na IPC wysyłał ten sam tekst jeszcze raz,
+ * bo pole czyścimy dopiero po odpowiedzi Rusta (S-01).
+ */
+const sending = ref(false)
 
 /** Dlaczego wpis nie wyszedł: nie ma do kogo wysłać. */
 type InputNotice = 'noneRunning' | 'noActive'
@@ -29,18 +35,24 @@ const noticeText = computed(() => (notice.value ? t(NOTICE_KEYS[notice.value]) :
  * Nie nadpisujemy też tego, co użytkownik zdążył wpisać podczas wysyłki.
  */
 async function submit(): Promise<void> {
+  if (sending.value) return
   const value = text.value.trim()
   if (value === '') return
   const toAll = accounts.sendToAll
-  const sent = await accounts.send(value)
+  sending.value = true
+  try {
+    const sent = await accounts.send(value)
 
-  if (sent === 0) {
-    show(toAll ? 'noneRunning' : 'noActive')
-    return
+    if (sent === 0) {
+      show(toAll ? 'noneRunning' : 'noActive')
+      return
+    }
+
+    clear()
+    if (text.value.trim() === value) text.value = ''
+  } finally {
+    sending.value = false
   }
-
-  clear()
-  if (text.value.trim() === value) text.value = ''
 }
 </script>
 
@@ -81,7 +93,7 @@ async function submit(): Promise<void> {
       <button
         type="submit"
         class="flex h-8 shrink-0 items-center gap-1.5 rounded bg-blue-600 px-3 text-xs font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-        :disabled="text.trim() === ''"
+        :disabled="text.trim() === '' || sending"
       >
         <Send :size="14" />
         {{ t('input.send') }}

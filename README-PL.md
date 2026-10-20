@@ -141,6 +141,9 @@ pliku, a każdą z nich oddzielają wiersze `=== session start ... ===` i
 `=== session end ... ===`. Po północy (czas lokalny) zapis przechodzi do pliku z nową datą,
 także w działającej sesji.
 
+Przełącznik i folder działają od razu: włączenie zapisu zaczyna pisać dla połączeń, które już
+działają, a nowy folder dostaje kolejne linie bez restartowania połączeń.
+
 Pliki są w UTF-8, jeden wiersz na linię wyjścia MCC: `[21:03:07] <Steve> hello`, bez kodów
 kolorów Minecrafta (`§`) i sekwencji ANSI. To, co MCC pisze na stderr, dostaje przedrostek
 `[stderr] `.
@@ -192,6 +195,13 @@ aplikacja ich nie czyta, nie kopiuje i nie eksportuje.
 - **Konta offline** nie potrzebują żadnego logowania do Microsoftu.
 - **Aplikacja nie wykonuje własnych połączeń sieciowych.** Wszystko działa offline poza tym,
   czego potrzebuje sam MCC.
+- **Brakujące pliki nie zerują ustawień.** Jeśli zapisany `MinecraftClient.exe` zniknął
+  (przeniosłeś folder), aplikacja to zgłasza, prosi o plik od nowa i zachowuje pozostałe
+  ustawienia. Folder logów, do którego przy starcie nie da się pisać, wraca w ten sam sposób
+  do folderu domyślnego — zmienia się tylko to jedno ustawienie.
+- **Konto, którego nie udało się zapisać, nie jest dodane.** Jeśli `accounts.json` nie da się
+  zapisać (np. nieczytelna kopia została odłożona przy starcie), formularz zostaje otwarty
+  z Twoim wpisem i pokazuje powód, zamiast udawać, że konto zostało zapisane.
 - **Nic więcej nie jest zbierane.** Żadnej telemetrii, statystyk ani raportów awarii.
 
 ## Znane ograniczenia

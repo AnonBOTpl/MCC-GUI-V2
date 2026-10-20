@@ -59,6 +59,21 @@ describe('SettingsModal', () => {
   })
 
   /**
+   * S-06: natywny dialog nie ma własnej warstwy tłumaczeń, więc tytuł okna
+   * przychodzi z vue-i18n, a nie z literału w Rustcie.
+   */
+  it('tytuł okna wyboru folderu idzie z tłumaczeń (S-06)', async () => {
+    vi.mocked(backend.pickChatLogFolder).mockResolvedValue(null)
+    const wrapper = await openModal()
+
+    const change = wrapper.findAll('button').find((button) => button.text() === 'Change')
+    await change!.trigger('click')
+    await flushPromises()
+
+    expect(backend.pickChatLogFolder).toHaveBeenCalledWith('Choose the chat log folder')
+  })
+
+  /**
    * R-20: po nieudanym zapisie modal wołał `resetDraft()`, więc wpisane wartości
    * wracały do stanu z dysku - użytkownik nie widział ani swojej zmiany, ani
    * powodu błędu. Dziś modal zostaje otwarty **z kopią roboczą**, a komunikat

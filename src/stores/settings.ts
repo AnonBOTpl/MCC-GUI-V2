@@ -183,10 +183,13 @@ export const useSettingsStore = defineStore('settings', () => {
   /**
    * Otwiera natywny wybór folderu logów czatu. Nic nie zapisuje - zapis należy
    * do modala ustawień. `null` oznacza anulowanie albo błąd (błąd ląduje w toastach).
+   *
+   * Tytuł okna podaje komponent z vue-i18n: natywny dialog nie ma własnej
+   * warstwy tłumaczeń, a tekst widoczny dla użytkownika nie może stać w Rustcie (S-06).
    */
-  async function pickChatLogFolder(): Promise<string | null> {
+  async function pickChatLogFolder(title: string): Promise<string | null> {
     try {
-      return await backend.pickChatLogFolder()
+      return await backend.pickChatLogFolder(title)
     } catch (error) {
       pushError(error as ErrorPayload)
       return null

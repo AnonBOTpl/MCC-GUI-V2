@@ -121,6 +121,35 @@ describe('InputBar', () => {
     expect((wrapper.get('input[type="text"]').element as HTMLInputElement).value).toBe('drugi')
   })
 
+  /**
+   * S-01: pole czyścimy po odpowiedzi Rusta, więc drugi submit w trakcie
+   * wysyłki widział jeszcze ten sam tekst i wysyłał go drugi raz.
+   */
+  it('drugi submit w trakcie wysyłki nie wysyła wpisu ponownie (S-01)', async () => {
+    openConnection()
+    let release: (() => void) | undefined
+    vi.mocked(backend.sendInput).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+    )
+    const wrapper = mountBar()
+
+    await wrapper.get('input[type="text"]').setValue('/say hej')
+    await wrapper.get('form').trigger('submit')
+    // Drugi Enter, zanim pierwsza wysyłka doszła do backendu.
+    await wrapper.get('form').trigger('submit')
+
+    expect(backend.sendInput).toHaveBeenCalledTimes(1)
+
+    release?.()
+    await flushPromises()
+
+    expect(backend.sendInput).toHaveBeenCalledTimes(1)
+    expect((wrapper.get('input[type="text"]').element as HTMLInputElement).value).toBe('')
+  })
+
   it('udana wysyłka kasuje wcześniejszy komunikat (R-24)', async () => {
     const accounts = useAccountsStore()
     const wrapper = mountBar()

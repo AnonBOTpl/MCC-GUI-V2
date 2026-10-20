@@ -7,7 +7,8 @@
 //! `MCC_EXECUTABLE` zostaje jako fallback deweloperski: normalną drogą jest
 //! ścieżka zapisana tutaj i wybrana w UI.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -41,8 +42,9 @@ pub const DEFAULT_CHAT_LOG_RETENTION_DAYS: u32 = 30;
 /// liczbowym, która kazałaby trzymać logi w nieskończoność.
 pub const MAX_CHAT_LOG_RETENTION_DAYS: u32 = 3650;
 
-/// Nazwa pliku próbnego przy sprawdzaniu, czy folder logów jest zapisywalny.
-const CHAT_LOG_PROBE_FILE: &str = ".mcc-gui-write-test";
+/// Prefiks pliku próbnego przy sprawdzaniu, czy folder logów jest zapisywalny.
+/// Do prefiksu dokładamy pid i licznik, żeby nazwa była unikalna (S-04).
+const CHAT_LOG_PROBE_PREFIX: &str = ".mcc-gui-write-test";
 
 /// Języki obsługiwane przez aplikację (`en` = źródło prawdy).
 const SUPPORTED_LANGUAGES: [&str; 2] = ["en", "pl"];
@@ -193,17 +195,52 @@ pub fn validate_chat_log_dir(raw: &str) -> Result<PathBuf, AppError> {
         ));
     }
 
-    let probe = path.join(CHAT_LOG_PROBE_FILE);
-    if let Err(error) = std::fs::write(&probe, b"") {
+    if let Err(error) = probe_write_access(&path) {
         tracing::warn!(%error, dir = %path.display(), "logi czatu: folder nie jest zapisywalny");
         return Err(AppError::with_params(
             "chatlog.dirNotWritable",
             serde_json::json!({ "osError": error.raw_os_error().unwrap_or(-1) }),
         ));
     }
-    let _ = std::fs::remove_file(&probe);
 
     Ok(path)
+}
+
+/// Sprawdza zapisywalność folderu, zakładając **własny** plik próbny.
+///
+/// Wcześniej walidacja pisała i usuwała plik o stałej nazwie, więc wybranie
+/// folderu kasowało plik użytkownika o tej samej nazwie (S-04). Teraz nazwa jest
+/// unikalna (pid + licznik), plik powstaje przez `create_new` (nigdy nie nadpisze
+/// istniejącego), a usuwamy wyłącznie ten plik, który sami utworzyliśmy.
+fn probe_write_access(dir: &Path) -> std::io::Result<()> {
+    use std::io::Write;
+
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let probe = dir.join(format!(
+            "{CHAT_LOG_PROBE_PREFIX}-{}-{seq}",
+            std::process::id()
+        ));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe)
+        {
+            Ok(mut file) => {
+                let result = file.write_all(b"probe").and_then(|()| file.sync_all());
+                // Uchwyt musi zniknąć przed usunięciem (Windows blokuje otwarty plik).
+                drop(file);
+                let _ = std::fs::remove_file(&probe);
+                return result;
+            }
+            // Kolizja nazwy jest praktycznie niemożliwa, ale nie nadpisujemy cudzego pliku.
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && attempt < 8 => {}
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 /// Sprawdza i normalizuje ustawienia przed zapisem.
@@ -250,6 +287,94 @@ pub fn normalize(mut settings: AppSettings) -> Result<AppSettings, AppError> {
     settings.server_history = normalize_server_history(&settings.server_history);
 
     Ok(settings)
+}
+
+/// Ustawienia wczytane z dysku razem z polami, których nie dało się przyjąć.
+pub struct LoadedSettings {
+    /// Ustawienia po łagodnej normalizacji (każde pole ma wartość z pliku albo
+    /// swoją domyślną).
+    pub settings: AppSettings,
+    /// Po jednym wpisie na pole zastąpione wartością domyślną - do pokazania
+    /// w UI jako zwykły toast (kod + parametry, bez tekstów w Rustcie).
+    pub problems: Vec<AppError>,
+}
+
+/// Łagodna normalizacja ustawień **wczytanych z dysku** (R-10).
+///
+/// [`normalize`] jest ścisła, bo obsługuje zapis zainicjowany przez użytkownika:
+/// przy błędzie UI zostaje otwarte z kopią roboczą. Przy starcie taka ścisłość
+/// była szkodliwa - jedna nieaktualna ścieżka do MCC (np. po przeniesieniu
+/// folderu) odrzucała **cały** obiekt, a następny zapis utrwalał domyślne
+/// ustawienia, gubiąc bufor logu, opóźnienie, retencję i przełączniki.
+///
+/// Tutaj pole, którego nie da się przyjąć, wraca do swojej wartości domyślnej,
+/// a pozostałe zostają bez zmian. Każdy taki przypadek trafia do `problems`,
+/// żeby użytkownik wiedział, dlaczego coś się wyzerowało.
+///
+/// Pusta ścieżka („nie ustawiono”) nie jest problemem - to poprawny stan.
+pub fn normalize_loaded(mut settings: AppSettings) -> LoadedSettings {
+    let mut problems = Vec::new();
+
+    settings.language = settings.language.trim().to_ascii_lowercase();
+    if !SUPPORTED_LANGUAGES.contains(&settings.language.as_str()) {
+        problems.push(AppError::new("settings.languageInvalid"));
+        settings.language = default_language();
+    }
+
+    if settings.send_all_delay_ms > MAX_SEND_ALL_DELAY_MS {
+        problems.push(AppError::with_params(
+            "settings.delayOutOfRange",
+            serde_json::json!({ "max": MAX_SEND_ALL_DELAY_MS }),
+        ));
+        settings.send_all_delay_ms = default_send_all_delay_ms();
+    }
+
+    if !(MIN_LOG_BUFFER_SIZE..=MAX_LOG_BUFFER_SIZE).contains(&settings.log_buffer_size) {
+        problems.push(AppError::with_params(
+            "settings.bufferOutOfRange",
+            serde_json::json!({ "min": MIN_LOG_BUFFER_SIZE, "max": MAX_LOG_BUFFER_SIZE }),
+        ));
+        settings.log_buffer_size = default_log_buffer_size();
+    }
+
+    if settings.chat_log_retention_days > MAX_CHAT_LOG_RETENTION_DAYS {
+        problems.push(AppError::with_params(
+            "settings.retentionOutOfRange",
+            serde_json::json!({ "max": MAX_CHAT_LOG_RETENTION_DAYS }),
+        ));
+        settings.chat_log_retention_days = default_chat_log_retention_days();
+    }
+
+    // Nieaktualna ścieżka do MCC czyści tylko siebie: użytkownik wybierze plik
+    // od nowa (modal ustawień i tak otwiera się, gdy ścieżki brak), a reszta
+    // ustawień zostaje w pamięci i wróci przy następnym zapisie.
+    settings.mcc_path = match settings.mcc_path.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(raw) => match validate_mcc_path(raw) {
+            Ok(path) => Some(path.to_string_lossy().into_owned()),
+            Err(error) => {
+                problems.push(error);
+                None
+            }
+        },
+    };
+
+    // To samo dla folderu logów: gdy nie da się tam pisać (albo ścieżka nie jest
+    // pełna), zapis wraca do folderu domyślnego zamiast wywracać całe ustawienia.
+    settings.chat_log_dir = match settings.chat_log_dir.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(raw) => match validate_chat_log_dir(raw) {
+            Ok(path) => Some(path.to_string_lossy().into_owned()),
+            Err(error) => {
+                problems.push(error);
+                None
+            }
+        },
+    };
+
+    settings.server_history = normalize_server_history(&settings.server_history);
+
+    LoadedSettings { settings, problems }
 }
 
 /// Porządkuje historię serwerów: obcina, usuwa puste i duplikaty, ogranicza liczbę.
@@ -319,6 +444,34 @@ mod tests {
         let back: AppSettings = serde_json::from_str(&json).expect("deserializacja");
         assert_eq!(back, settings);
     }
+    /// S-04: walidacja folderu nie może nadpisać ani usunąć pliku użytkownika.
+    #[test]
+    fn write_probe_leaves_a_users_file_untouched() {
+        let dir = std::env::temp_dir().join(format!("mcc-settings-probe-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("katalog testowy");
+        // Plik o nazwie, którą wcześniej tworzyła walidacja.
+        let user_file = dir.join(".mcc-gui-write-test");
+        std::fs::write(&user_file, b"moje dane").expect("plik użytkownika");
+
+        let validated = validate_chat_log_dir(&dir.to_string_lossy()).expect("folder zapisywalny");
+        assert_eq!(validated, dir);
+        assert_eq!(
+            std::fs::read(&user_file).expect("odczyt pliku użytkownika"),
+            b"moje dane"
+        );
+
+        let leftovers: Vec<String> = std::fs::read_dir(&dir)
+            .expect("odczyt katalogu")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name != ".mcc-gui-write-test")
+            .collect();
+        assert!(leftovers.is_empty(), "zostały pliki próbne: {leftovers:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn normalize_rejects_unknown_language() {
         let settings = AppSettings {
@@ -350,6 +503,91 @@ mod tests {
             normalize(buffer).unwrap_err().code,
             "settings.bufferOutOfRange"
         );
+    }
+
+    /// R-10: nieaktualna ścieżka do MCC nie może wyzerować pozostałych ustawień.
+    #[test]
+    fn stale_mcc_path_keeps_the_other_settings() {
+        let settings = AppSettings {
+            mcc_path: Some("C:/nie/ma/takiego/MinecraftClient.exe".into()),
+            language: "pl".into(),
+            send_all_delay_ms: 400,
+            log_buffer_size: 9000,
+            restore_tabs: false,
+            confirm_close: false,
+            chat_log_enabled: false,
+            chat_log_dir: None,
+            chat_log_retention_days: 7,
+            server_history: vec!["play.example.com".into()],
+        };
+
+        let loaded = normalize_loaded(settings);
+        assert_eq!(loaded.problems.len(), 1);
+        assert_eq!(loaded.problems[0].code, "mcc.pathNotFound");
+
+        let kept = loaded.settings;
+        assert_eq!(kept.mcc_path, None);
+        assert_eq!(kept.language, "pl");
+        assert_eq!(kept.send_all_delay_ms, 400);
+        assert_eq!(kept.log_buffer_size, 9000);
+        assert!(!kept.restore_tabs);
+        assert!(!kept.confirm_close);
+        assert!(!kept.chat_log_enabled);
+        assert_eq!(kept.chat_log_retention_days, 7);
+    }
+
+    /// R-10: przy starcie naprawiamy tylko zepsute pola, reszta zostaje.
+    #[test]
+    fn loaded_settings_repair_only_the_broken_fields() {
+        let settings = AppSettings {
+            language: "de".into(),
+            send_all_delay_ms: MAX_SEND_ALL_DELAY_MS + 1,
+            log_buffer_size: MIN_LOG_BUFFER_SIZE - 1,
+            chat_log_retention_days: MAX_CHAT_LOG_RETENTION_DAYS + 1,
+            // Względna ścieżka: nie da się jej użyć jako folderu logów.
+            chat_log_dir: Some("logs".into()),
+            restore_tabs: false,
+            ..Default::default()
+        };
+
+        let loaded = normalize_loaded(settings);
+        let codes: Vec<&str> = loaded
+            .problems
+            .iter()
+            .map(|problem| problem.code.as_str())
+            .collect();
+        assert_eq!(
+            codes,
+            vec![
+                "settings.languageInvalid",
+                "settings.delayOutOfRange",
+                "settings.bufferOutOfRange",
+                "settings.retentionOutOfRange",
+                "chatlog.dirNotAbsolute",
+            ]
+        );
+
+        assert_eq!(loaded.settings.language, "en");
+        assert_eq!(loaded.settings.send_all_delay_ms, DEFAULT_SEND_ALL_DELAY_MS);
+        assert_eq!(loaded.settings.log_buffer_size, DEFAULT_LOG_BUFFER_SIZE);
+        assert_eq!(
+            loaded.settings.chat_log_retention_days,
+            DEFAULT_CHAT_LOG_RETENTION_DAYS
+        );
+        assert_eq!(loaded.settings.chat_log_dir, None);
+        // Pole bez błędu zostaje bez zmian.
+        assert!(!loaded.settings.restore_tabs);
+    }
+
+    #[test]
+    fn loaded_settings_without_errors_are_untouched() {
+        let settings = AppSettings::default();
+        let expected = settings.clone();
+
+        let loaded = normalize_loaded(settings);
+
+        assert!(loaded.problems.is_empty());
+        assert_eq!(loaded.settings, expected);
     }
 
     #[test]
@@ -428,8 +666,13 @@ mod tests {
             validate_chat_log_dir(&dir.to_string_lossy()).expect("folder do utworzenia");
         assert_eq!(validated, dir);
         assert!(dir.is_dir(), "walidacja ma założyć brakujący folder");
-        // Plik próbny nie może zostawać na dysku.
-        assert!(!dir.join(super::CHAT_LOG_PROBE_FILE).exists());
+        // Plik próbny nie może zostawać na dysku (nazwy są unikalne, S-04).
+        let leftovers: Vec<String> = std::fs::read_dir(&dir)
+            .expect("odczyt katalogu")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(leftovers.is_empty(), "zostały pliki próbne: {leftovers:?}");
 
         // Ścieżka wskazująca na plik nie jest folderem.
         let file = dir.join("plik.txt");

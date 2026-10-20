@@ -33,6 +33,7 @@
     "chatLogToggle": "Zapisuj logi czatu do plików",
     "chatLogHint": "Wszystko, co widzi i pisze każde konto, dopisuje się do pliku dnia - razem z prywatnymi wiadomościami od innych graczy. Zostają one tylko na tym komputerze. Kody logowania i linki nie są nigdzie zapisywane.",
     "chatLogDir": "Folder logów",
+    "chatLogPickTitle": "Wybierz folder logów czatu",
     "chatLogDefault": "Domyślna lokalizacja",
     "chatLogChange": "Zmień",
     "chatLogOpen": "Otwórz folder",
@@ -220,7 +221,8 @@
       "entriesSkipped": "Pominięto {count} wpis w pliku {file}, którego nie dało się odczytać | Pominięto {count} wpisy w pliku {file}, których nie dało się odczytać | Pominięto {count} wpisów w pliku {file}, których nie dało się odczytać"
     },
     "dialog": {
-      "failed": "Nie udało się otworzyć okna wyboru pliku."
+      "failed": "Nie udało się otworzyć okna wyboru pliku.",
+      "titleInvalid": "Nie udało się otworzyć okna wyboru: brakowało tytułu okna."
     },
     "server": {
       "invalid": "Ten adres serwera jest nieprawidłowy.",

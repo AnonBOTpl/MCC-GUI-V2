@@ -138,6 +138,9 @@ and its logs start in a new one.
 delimited by `=== session start ... ===` and `=== session end ... ===` lines. After local
 midnight the writer moves to the next day's file, even in a running session.
 
+The switch and the folder apply immediately: turning saving on starts writing for connections
+that are already running, and a new folder receives the next lines without restarting them.
+
 Lines are UTF-8, one per MCC output line: `[21:03:07] <Steve> hello`, with Minecraft `§`
 colour codes and ANSI escapes removed. Anything MCC writes to stderr gets a `[stderr] `
 prefix.
@@ -188,6 +191,13 @@ folder and the app never reads, copies or exports them.
 - **Offline accounts** need no Microsoft login at all.
 - **The app makes no network requests of its own.** Everything works offline except what MCC
   itself needs.
+- **Missing files do not reset your settings.** If the saved `MinecraftClient.exe` is gone
+  (you moved the folder), the app says so, asks for the file again and keeps everything else.
+  A log folder that cannot be written at startup falls back to the default folder the same
+  way - only that one setting changes.
+- **An account that could not be saved is not added.** If `accounts.json` cannot be written
+  (for example because an unreadable copy was quarantined at startup), the add dialog stays
+  open with your input and shows the reason instead of pretending the account was stored.
 - **Nothing else is collected.** No telemetry, no analytics, no crash reporting.
 
 ## Known limitations

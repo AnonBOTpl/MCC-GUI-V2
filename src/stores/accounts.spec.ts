@@ -233,6 +233,26 @@ describe('store kont - przełącznik dotyczy zakładek, nie kont', () => {
     expect(lastSaved()[2].tabOrder).toBe(1)
   })
 
+  /**
+   * S-05: `save_accounts` może odmówić zapisu (np. plik w kwarantannie).
+   * Wtedy konto nie jest dodane - store cofa też rejestrację w menedżerze.
+   */
+  it('nieudany zapis cofa dodanie konta (S-05)', async () => {
+    const accounts = useAccountsStore()
+    await accounts.restoreAccounts()
+    vi.mocked(backend.saveAccounts).mockRejectedValue({
+      code: 'store.fileQuarantined',
+      params: { file: 'accounts.json' },
+    })
+
+    const added = await accounts.addAccount(newAccount('acc-3'))
+
+    expect(added).toBe(false)
+    expect(accounts.accounts.map((item) => item.id)).toEqual(['acc-1', 'acc-2'])
+    expect(backend.removeAccount).toHaveBeenCalledWith('acc-3')
+    expect(accounts.errors[0]?.code).toBe('store.fileQuarantined')
+  })
+
   it('usunięcie konta usuwa tylko to jedno', async () => {
     const accounts = useAccountsStore()
     await accounts.restoreAccounts()
