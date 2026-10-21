@@ -22,6 +22,8 @@ shows what it prints.
   [mccteam.github.io](https://mccteam.github.io/guide/usage.html) and keep in a permanent
   folder. The app never bundles or downloads it — it only starts the
   `MinecraftClient.exe` you point it at.
+- **MCC 1.x.** The app works with the classic Minecraft Console Client (1.x, the
+  `MinecraftClient.exe` release). MCC 2.0 Early Access is not supported yet.
 - Nothing else. The WebView2 component the app uses is already part of Windows 11.
 
 ## Installing the app

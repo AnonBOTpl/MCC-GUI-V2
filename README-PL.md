@@ -22,6 +22,8 @@ i pokazuje to, co one wypisują.
   [mccteam.github.io](https://mccteam.github.io/guide/usage.html) i trzymasz w stałym
   miejscu. Aplikacja nigdy go nie dołącza ani nie pobiera — uruchamia tylko wskazany przez
   Ciebie plik `MinecraftClient.exe`.
+- **MCC 1.x.** Aplikacja współpracuje z klasycznym Minecraft Console Client (1.x, wydanie
+  z `MinecraftClient.exe`). MCC 2.0 Early Access nie jest jeszcze obsługiwany.
 - Nic więcej. Komponent WebView2, z którego korzysta aplikacja, jest już częścią Windows 11.
 
 ## Instalacja
